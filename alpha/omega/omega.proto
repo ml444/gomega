@@ -1,0 +1,77 @@
+syntax = "proto3";
+// protoc -I=$SRC_DIR --go_out=$DST_DIR $SRC_DIR/omega.proto
+// protoc --go_out=plugins=grpc:. omega.proto
+// protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative omega.proto
+option go_package = "github.com/ml444/gomega/alpha/omega";
+
+package omega;
+
+service OmegaService {
+    rpc Pub(PubReq) returns (Response) {}
+    rpc Sub(SubReq) returns (SubRsp) {}
+    rpc UpdateSubCfg(SubCfg) returns (Response) {}
+    rpc Consume(stream ConsumeReq) returns (stream ConsumeRsp) {}
+}
+enum DelayType {
+    DelayTypeNone = 0;
+    DelayTypeRelateTime = 1;    // delay_time is relative time
+    DelayTypeAbsoluteTime = 2;  // delay_time is absolute time
+}
+message Response {
+    sint32 status = 1;
+    string message = 2;
+}
+message PubReq {
+    string topic = 1;
+    uint64 hash_code = 2;
+    bytes data = 3;
+    //@desc: priority of the message, the larger the value, the higher the priority
+    uint32 priority = 4;
+    // @ref_type: DelayType
+    uint32 delay_type = 5;
+    uint32 delay_time = 6;
+}
+
+//// strategy
+//enum Policy {
+//  PolicyConcurrence = 0;
+//  PolicySerial = 1;
+//}
+
+message SubReq {
+    string client_id = 1;
+    string topic = 3;
+    string group = 4;
+//    SubCfg cfg = 5;
+    //  uint32 max_retry_count = 5;
+    //  uint32 max_timeout = 6;
+    //  uint32 retry_interval_ms =7;
+    //  uint32 item_lifetime_in_Queue = 8;
+    //  Policy policy = 9;
+
+}
+
+message SubRsp {
+    sint32 status = 1;
+    string token = 2;
+    uint64 sequence = 3;
+}
+
+
+message SubCfg {
+    string topic = 1;
+    string group = 2;
+    uint32 version = 3;
+    bool is_hash_dispatch = 4;
+}
+
+
+message ConsumeReq {
+    string token = 4;
+    uint64 sequence = 5;
+}
+
+message ConsumeRsp {
+    uint64 sequence = 3;
+    bytes data = 4;
+}

@@ -1,8 +1,6 @@
 package subscribe
 
 import (
-	"fmt"
-	log "github.com/ml444/glog"
 	"github.com/ml444/scheduler/backend"
 	"github.com/ml444/scheduler/mfile"
 	"go.uber.org/atomic"

@@ -1,15 +1,9 @@
 package subscribe
 
 import (
-	"errors"
-	"fmt"
-	log "github.com/ml444/glog"
 	"github.com/ml444/scheduler/backend"
 	"github.com/ml444/scheduler/mfile"
-	"math/rand"
-	"strings"
 	"sync"
-	"time"
 )
 
 type ConsumeReq struct {
@@ -48,273 +42,133 @@ type ConsumeRsp struct {
 	XXX_unrecognized     []byte   `json:"-" bson:"-"`
 	XXX_sizecache        int32    `json:"-" bson:"-"`
 }
-type retryItem struct {
-	item       *mfile.Item
-	nextExecAt int64
+
+const defaultConsumeConcurrentCount = 100
+
+type ConcurrentConsume struct {
+	cfg       *Config
+	wg        sync.WaitGroup
+	retryList *mfile.MinHeap
+	workers   []*consumeWorker
+	msgChan   chan *mfile.Item
+	backend   backend.IBackendReader
 }
 
-func (p *consumeWorker) RunAsync() {
-
-}
-
-func (p *consumeWorker) consumeMsg(item *mfile.Item, payload *MsgPayload, consumeRsp *ConsumeRsp) {
-	cfg := p.cfg
-	if cfg == nil {
-		log.Warnf("sub cfg is nil, skip")
-		consumeRsp.Retry = true
-		return
+func (c *ConcurrentConsume) Start() {
+	var concurrentCount uint32
+	cfg := c.cfg
+	if cfg == nil || cfg.ConcurrentCount == 0 {
+		concurrentCount = defaultConsumeConcurrentCount
 	}
-
-	if cfg.ServicePath == "" || cfg.ServiceName == "" {
-		consumeRsp.Retry = true
-		return
+	for i := 0; i < int(concurrentCount); i++ {
+		w := NewConsumeWorker(&c.wg, i, c.msgChan, c.backend)
+		c.workers = append(c.workers, w)
+		c.wg.Add(1)
+		go w.Run()
 	}
-
-	// TODO getRoute(checkRoute())
-
-
-	var timeoutSeconds = cfg.MaxExecTimeSeconds
-	if timeoutSeconds == 0 {
-		timeoutSeconds = defaultConsumeMaxExecTimeSeconds
-	}
-	req := &ConsumeReq{
-		CreatedAt:   item.CreatedAt,
-		RetryCnt:    item.RetryCount,
-		Data:        payload.Data,
-		MsgId:       payload.MsgId,
-		MaxRetryCnt: p.getMaxRetryCount(),
-		Timeout:     timeoutSeconds,
-	}
-
-	beg := time.Now()
-	callRsp := Call(req)
-	consumeRsp.Took = int64(time.Since(beg) / time.Millisecond)
-
-	if callRsp.retry {
-		consumeRsp.Retry = true
-		if !callRsp.skipIncRetryCount {
-			item.RetryCount++
+	if c.retryList.Len() > 0 {
+		for {
+			msg := c.retryList.PopEl()
+			if msg == nil {
+				break
+			}
+			c.msgChan <- msg.Value.(*mfile.Item)
 		}
 	}
-}
+	for false {
 
-func getRoute(key string) (string, error) {
-	return "", nil
-}
-
-func Call(req *ConsumeReq) *CallRsp {
-	var rsp CallRsp
-
-
-	addr, err := dispatch.Route(cfg.ServiceName, rand.Int(), 0, xBrickBeta)
-	if err != nil {
-		rsp.retry = true
-		rsp.skipIncRetryCount = true
-		rsp.err = err
-		return &rsp
 	}
-	rsp.addr = addr
-
-	cell := &SysCall{
-		CmdPath:    cfg.ServicePath,
-		CmdService: cfg.ServiceName,
-		ModuleName: "smq",
-		CallId:     fmt.Sprintf("%s.%s.%s", p.topicName, p.channelName, payload.MsgId),
-		ErrCode:    0,
-		ErrMsg:     "",
-		CallAt:     0,
-		ReqId:      ctx.GetReqId(),
-		BaseReqId:  getBaseReqId(ctx.GetReqId()),
-		Duration:   0,
-	}
-	defer func() {
-		if cell.Duration > 500 || cell.ErrCode != 0 {
-			sendMsg("sysCall", cell)
-		}
-	}()
-
-
-	cell.CallAt = time.Now().UnixMilli()
-
-	err = rpc.ClientCallSpecAddressWithTimeout(
-		ctx, cfg.ServiceName, addr, cfg.ServicePath, req, consumeRsp,
-		time.Duration(timeoutSeconds)*time.Second)
-
-	cell.Duration = time.Now().UnixMilli() - cell.CallAt
-
-	if err != nil {
-		rsp.err = err
-
-		var errCode int32
-		if x, ok := err.(*rpc.ErrMsg); ok {
-			errCode = x.ErrCode
-			cell.ErrCode = x.ErrCode
-			cell.ErrMsg = x.ErrMsg
-		} else {
-			errCode = -1
-			cell.ErrCode = -1
-			cell.ErrMsg = err.Error()
-		}
-
-		if errCode < 0 {
-			rsp.retry = true
-			rsp.skipIncRetryCount = false
-		} else {
-			rsp.retry = consumeRsp.Retry
-			rsp.skipIncRetryCount = consumeRsp.SkipIncRetryCount
-		}
-	} else {
-		rsp.retry = consumeRsp.Retry
-		rsp.skipIncRetryCount = consumeRsp.SkipIncRetryCount
-	}
-
-	return &rsp
-
-OUT:
-	rsp.retry = true
-	rsp.skipIncRetryCount = true
-	rsp.err = errors.New("cpu load too high, retry")
-	log.Warnf("cpu load too high smq: %s: call %s %s msgId:%s cml:%d addr:%s, retry", p.logName, cfg.ServiceName, cfg.ServicePath, payload.MsgId, cml, addr)
-	return &rsp
 }
-
-type CallRsp struct {
-	addr  string
-	retry bool
-	took  int64
-	err   error
-
-	skipIncRetryCount bool
-}
-
-func (p *consumeWorker) getMaxRetryCount() uint32 {
-	s := p.cfg
-	maxRetryCount := uint32(defaultConsumeMaxRetryCount)
-	if s != nil && s.MaxRetryCount > 0 {
-		maxRetryCount = s.MaxRetryCount
+func (c *ConcurrentConsume) Stop() {
+	for _, w := range c.workers {
+		w.notifyExit()
 	}
-	return maxRetryCount
-}
-
-func (p *consumeWorker) getNextRetryWait(retryCnt uint32) uint32 {
-	s := p.cfg
-	if s != nil && s.RetryIntervalMax > 0 {
-		min := s.RetryIntervalMin
-		max := s.RetryIntervalMax
-		if min >= max {
-			return max
-		}
-		diff := max - min
-		cnt := p.getMaxRetryCount()
-		var step uint32
-		if s.RetryIntervalStep > 0 {
-			step = s.RetryIntervalStep
-		} else {
-			step = diff / cnt
-			if step == 0 {
-				step = 1
+	c.wg.Wait()
+	for _, w := range c.workers {
+		if w.retryList != nil {
+			for {
+				el := w.retryList.PopEl()
+				if el == nil {
+					break
+				}
+				c.retryList.PushEl(el)
+				//c.retryList = append(c.retryList, el.)
 			}
 		}
-		if retryCnt > 0 {
-			retryCnt--
+	}
+}
+
+type SerialConsume struct {
+	cfg       *Config
+	wg        sync.WaitGroup
+	workerMap map[int]*consumeWorker
+	heapMap   map[int]*mfile.MinHeap
+	msgChanMap map[int]chan *mfile.Item
+	backend   backend.IBackendReader
+	retryList []*mfile.Item
+	workerCount uint32
+}
+
+func (c *SerialConsume) Start() {
+	var concurrentCount uint32
+	cfg := c.cfg
+	if cfg == nil || cfg.ConcurrentCount == 0 {
+		concurrentCount = defaultConsumeConcurrentCount
+	}
+	c.workerCount = concurrentCount
+	if c.workerMap == nil {
+		c.workerMap = map[int]*consumeWorker{}
+	}
+	if c.msgChanMap == nil {
+		c.msgChanMap = map[int]chan *mfile.Item{}
+	}
+	for i := 0; i < int(concurrentCount); i++ {
+		// TODO chan
+		ch := make(chan *mfile.Item, 1024)
+		c.msgChanMap[i] = ch
+		w := NewConsumeWorker(&c.wg, i, ch, c.backend)
+		c.workerMap[i] = w
+		c.wg.Add(1)
+		go w.Run()
+	}
+	if len(c.retryList) > 0 {
+		for {
+			msg := c.retryList[0]
+			c.retryList = c.retryList[1:]
+			if msg == nil {
+				break
+			}
+			c.selectEmit(msg)
 		}
-		res := min + (retryCnt * step)
-		if res >= max {
-			res = max
+	}
+	for false {
+
+	}
+}
+func (c *SerialConsume) selectEmit(msg *mfile.Item) {
+	hashSize := msg.Hash
+	idx := int(hashSize/c.workerCount)
+	ch := c.msgChanMap[idx]
+	ch <- msg
+}
+func (c *SerialConsume) Stop() {
+	for _, w := range c.workerMap {
+		w.notifyExit()
+	}
+	c.wg.Wait()
+	for _, w := range c.workerMap {
+		if w.retryList != nil {
+			for {
+				el := w.retryList.PopEl()
+				if el == nil {
+					break
+				}
+				//c.retryList.PushEl(el)
+				c.retryList = append(c.retryList, el.Value.(*mfile.Item))
+			}
 		}
-		return res
 	}
-	if retryCnt == 0 {
-		retryCnt = 1
-	}
-	return retryCnt * 5
 }
 
-func genNewLogCtx(oldCtx string, id string) string {
-	if oldCtx == "" {
-		return id
-	}
-	pos := strings.IndexByte(oldCtx, '.')
-	var s string
-	if pos > 0 {
-		s = oldCtx[:pos]
-	} else {
-		s = oldCtx
-	}
-	return fmt.Sprintf("%s.%s", s, id)
-}
-
-func (p *consumeWorker) onFinalFail(item *mfile.Item, payload *MsgPayload) {
-	log.Warnf("%s: msg %s touch max retry count, drop",
-		p.logName, payload.MsgId)
-	warning.ReportMsg(nil, "smq: %s: final fail", p.logName)
-	obj := &smq.SosObjectPayload{
-		CreatedAt:   item.CreatedAt,
-		Hash:        item.Hash,
-		Data:        payload.Data,
-		TopicName:   p.topicName,
-		ChannelName: p.channelName,
-	}
-	pb, err := proto.Marshal(obj)
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return
-	}
-	id, err := sos.SetObject(nil, &sos.SetReq{
-		PersistentType: finalFailObjectPersistentType,
-		Buf:            pb,
-		CorpId:         item.CorpId,
-		AppId:          item.AppId,
-	})
-	if err != nil {
-		log.Errorf("err:%v", err)
-		warning.ReportMsg(nil, "sos.SetObject err %v", err)
-	}
-
-}
-
-type SysCall struct {
-	CmdPath    string `json:"cmd_path,omitempty"`
-	CmdService string `json:"cmd_service,omitempty"`
-
-	ModuleName string `json:"module_name,omitempty"`
-	// 任务id、msgid等
-	CallId string `json:"call_id,omitempty"`
-
-	ErrCode int32  `json:"err_code,omitempty"`
-	ErrMsg  string `json:"err_msg,omitempty"`
-
-	CallAt int64 `json:"call_at,omitempty"`
-
-	ReqId     string `json:"req_id,omitempty"`
-	BaseReqId string `json:"base_req_id,omitempty"`
-
-	Duration int64 `json:"duration,omitempty"`
-}
-
-func getBaseReqId(str string) string {
-	idx := strings.Index(str, ".")
-	if idx > 0 {
-		return utils.ShortStr(str, idx)
-	}
-	return str
-}
-
-func decodePayload(buf []byte) (*MsgPayload, error) {
-	var p smq.MsgPayload
-	err := proto.Unmarshal(buf, &p)
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return nil, err
-	}
-	return &p, nil
-}
-
-type MsgPayload struct {
-	//Ctx                  *MsgPayload_Context `protobuf:"bytes,1,opt,name=ctx" json:"ctx,omitempty"`
-	MsgId                string   `protobuf:"bytes,2,opt,name=msg_id,json=msgId" json:"msg_id,omitempty"`
-	Data                 []byte   `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-" bson:"-"`
-	XXX_unrecognized     []byte   `json:"-" bson:"-"`
-	XXX_sizecache        int32    `json:"-" bson:"-"`
+type AsyncConsume struct {
 }

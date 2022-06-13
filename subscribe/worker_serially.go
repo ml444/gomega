@@ -3,6 +3,7 @@ package subscribe
 import (
 	"fmt"
 	log "github.com/ml444/glog"
+	"github.com/ml444/scheduler/backend"
 	"github.com/ml444/scheduler/mfile"
 	"go.uber.org/atomic"
 	"sync"
@@ -13,8 +14,8 @@ type SerialWorker struct {
 	workerId   int
 	msgCh      chan *mfile.Item
 	wg         sync.WaitGroup
-	backend    *withFileGroup
-	item       *mfile.Item
+	backend    backend.IBackendReader
+	//item       *mfile.Item
 	notifyExit atomic.Bool
 	exited     atomic.Bool
 
@@ -25,6 +26,7 @@ type SerialWorker struct {
 	msgId          string
 	seq            uint64
 
+	hashHeapMap    map[uint32]*mfile.MinHeap
 
 }
 func (p *SerialWorker) Run() {

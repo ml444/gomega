@@ -1,4 +1,4 @@
-package mfile
+package structure
 
 import "container/heap"
 

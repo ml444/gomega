@@ -1,9 +1,5 @@
 package subscribe
 
-import (
-	log "github.com/ml444/glog"
-)
-
 type Subscriber struct {
 	Name  string
 	Topic string
@@ -13,9 +9,7 @@ type Subscriber struct {
 }
 
 func NewSubscriber(namespace, topicName string, subCfg *Config) *Subscriber {
-	log.Infof("init subCfg %+v", subCfg)
 	return &Subscriber{
 		Cfg: subCfg,
-
 	}
 }

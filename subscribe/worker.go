@@ -4,7 +4,7 @@ import (
 	"fmt"
 	log "github.com/ml444/glog"
 	"github.com/ml444/scheduler/backend"
-	"github.com/ml444/scheduler/mfile"
+	"github.com/ml444/scheduler/structure"
 	"strings"
 	"sync"
 	"time"
@@ -21,12 +21,12 @@ type consumeWorker struct {
 	wg         *sync.WaitGroup
 	idx        int
 	exitChan   chan int
-	msgChan    chan *mfile.Item
+	msgChan    chan *structure.Item
 	backend    backend.IBackendReader
-	retryList  *mfile.MinHeap
+	retryList  *structure.MinHeap
 	tk         *time.Ticker
 	cfg        *Config
-	futureList *mfile.Tree // async
+	futureList *structure.Tree // async
 	blockLimit int
 }
 
@@ -37,14 +37,14 @@ const (
 	defaultConsumeMaxRetryCount      = 5
 )
 
-func NewConsumeWorker(wg *sync.WaitGroup, idx int, msgChan chan *mfile.Item, backend backend.IBackendReader) *consumeWorker {
+func NewConsumeWorker(wg *sync.WaitGroup, idx int, msgChan chan *structure.Item, backend backend.IBackendReader) *consumeWorker {
 	return &consumeWorker{
 		wg:        wg,
 		idx:       idx,
 		exitChan:  make(chan int, 1),
 		msgChan:   msgChan,
 		backend:   backend,
-		retryList: mfile.NewMinHeap(),
+		retryList: structure.NewMinHeap(),
 		tk:        time.NewTicker(defaultTimeout),
 	}
 }
@@ -54,7 +54,7 @@ func (p *consumeWorker) notifyExit() {
 	default:
 	}
 }
-func (p *consumeWorker) getNextMsg(exit *bool) *mfile.Item {
+func (p *consumeWorker) getNextMsg(exit *bool) *structure.Item {
 
 	select {
 	case msg := <-p.msgChan:
@@ -67,11 +67,11 @@ func (p *consumeWorker) getNextMsg(exit *bool) *mfile.Item {
 	}
 }
 
-func (p *consumeWorker) tryRetryMsg() *mfile.Item {
+func (p *consumeWorker) tryRetryMsg() *structure.Item {
 	top := p.retryList.PeekEl()
 	now := time.Now().UnixMilli()
 	if top.Priority <= now {
-		return p.retryList.PopEl().Value.(*mfile.Item)
+		return p.retryList.PopEl().Value.(*structure.Item)
 	}
 	return nil
 }
@@ -81,10 +81,10 @@ func (p *consumeWorker) Run() {
 	fg := p.backend
 	for {
 		var exit bool
-		var msg *mfile.Item
+		var msg *structure.Item
 		var blockCount int
 		blockCount = p.retryList.Len()
-		if blockCount > 0  {
+		if blockCount > 0 {
 			msg = p.tryRetryMsg()
 		}
 		if msg == nil {
@@ -121,8 +121,8 @@ func (p *consumeWorker) Run() {
 					waitMs = int64(p.getNextRetryWait(msg.RetryCount)) * 1000
 				}
 				execAt := time.Now().UnixMilli() + waitMs
-				p.retryList.PushEl(&mfile.MinHeapElement{
-					Value: msg,
+				p.retryList.PushEl(&structure.MinHeapElement{
+					Value:    msg,
 					Priority: execAt,
 				})
 			}
@@ -131,8 +131,9 @@ func (p *consumeWorker) Run() {
 		}
 	}
 }
+
 //type retryItem struct {
-//	item       *mfile.Item
+//	item       *structure.Item
 //	nextExecAt int64
 //}
 
@@ -140,7 +141,7 @@ func (p *consumeWorker) RunAsync() {
 
 }
 
-func (p *consumeWorker) consumeMsg(item *mfile.Item, payload *MsgPayload, consumeRsp *ConsumeRsp) {
+func (p *consumeWorker) consumeMsg(item *structure.Item, payload *MsgPayload, consumeRsp *ConsumeRsp) {
 	cfg := p.cfg
 	if cfg == nil {
 		log.Warnf("sub cfg is nil, skip")
@@ -154,7 +155,6 @@ func (p *consumeWorker) consumeMsg(item *mfile.Item, payload *MsgPayload, consum
 	}
 
 	// TODO getRoute(checkRoute())
-
 
 	var timeoutSeconds = cfg.MaxExecTimeSeconds
 	if timeoutSeconds == 0 {
@@ -188,7 +188,6 @@ func getRoute(key string) (string, error) {
 func Call(req *ConsumeReq) *CallRsp {
 	var rsp CallRsp
 
-
 	addr, err := dispatch.Route(cfg.ServiceName, rand.Int(), 0, xBrickBeta)
 	if err != nil {
 		rsp.retry = true
@@ -215,7 +214,6 @@ func Call(req *ConsumeReq) *CallRsp {
 			sendMsg("sysCall", cell)
 		}
 	}()
-
 
 	cell.CallAt = time.Now().UnixMilli()
 
@@ -327,7 +325,7 @@ func genNewLogCtx(oldCtx string, id string) string {
 	return fmt.Sprintf("%s.%s", s, id)
 }
 
-func (p *consumeWorker) onFinalFail(item *mfile.Item, payload *MsgPayload) {
+func (p *consumeWorker) onFinalFail(item *structure.Item, payload *MsgPayload) {
 	log.Warnf("%s: msg %s touch max retry count, drop",
 		p.logName, payload.MsgId)
 	warning.ReportMsg(nil, "smq: %s: final fail", p.logName)

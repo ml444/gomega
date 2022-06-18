@@ -4,11 +4,8 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/ml444/glog"
-	"github.com/ml444/scheduler/mfile"
 	"github.com/ml444/scheduler/publish"
-	"github.com/petermattis/goid"
-	"math/rand"
-	"strings"
+	"github.com/ml444/scheduler/structure"
 	"sync"
 	"time"
 )
@@ -16,9 +13,9 @@ import (
 type FileGroup struct {
 	name        string
 	logName     string
-	fg          *mfile.FileGroup
+	fg          *structure.FileGroup
 	fgMu        sync.Mutex
-	qr          mfile.IQueueGroupReader
+	qr          structure.IQueueGroupReader
 	qrMu        sync.Mutex
 	subCfg      *smq.SubConfig
 	topicName   string
@@ -26,6 +23,7 @@ type FileGroup struct {
 	hasInit     bool
 	group       string
 }
+
 func (p *FileGroup) closeFileGroup() {
 	if p.fg != nil {
 		p.fgMu.Lock()
@@ -62,21 +60,19 @@ func (p *FileGroup) initFileGroup() error {
 	if p.fg != nil {
 		return nil
 	}
-	p.fg = mfile.NewFileGroup(p.name, s.Conf.DataPath, nil)
+	p.fg = structure.NewFileGroup(p.name, s.Conf.DataPath, nil)
 	err := p.fg.Init()
 	if err != nil {
 		return err
 	}
 	return nil
 }
+
 const (
 	defaultConsumeConcurrentCount    = 100
 	defaultConsumeMaxExecTimeSeconds = 60
 	defaultConsumeMaxRetryCount      = 5
 )
-
-
-
 
 func (p *FileGroup) initReader() error {
 	if p.qr != nil {
@@ -97,7 +93,7 @@ func (p *FileGroup) initReader() error {
 		}
 		return s.ConcurrentCount
 	}
-	qgr := mfile.NewQueueGroupReader(p.name, s.Conf.DataPath, nil, 8000)
+	qgr := structure.NewQueueGroupReader(p.name, s.Conf.DataPath, nil, 8000)
 	qgr.ReportQueueLenFunc = func(ql int64) {
 		reportQueueLen(p.topicName, p.channelName, ql)
 	}
@@ -210,7 +206,7 @@ func (p *FileGroup) initReaderBarrierMode() error {
 		}
 		return s.ConcurrentCount
 	}
-	p.qr = mfile.NewBarrierQueueGroupReader(p.name, s.Conf.DataPath, nil)
+	p.qr = structure.NewBarrierQueueGroupReader(p.name, s.Conf.DataPath, nil)
 	err := p.qr.Init()
 	if err != nil {
 		log.Errorf("err:%v", err)
@@ -304,7 +300,7 @@ func (p *FileGroup) Write(req *publish.PubReq, data []byte) error {
 	if !p.groupOk() {
 		return rpc.InvalidArg("node group not match")
 	}
-	it := &mfile.Item{
+	it := &structure.Item{
 		Hash:       req.Hash,
 		Data:       data,
 		DelayType:  req.DelayType,

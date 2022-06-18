@@ -2,7 +2,7 @@ package subscribe
 
 import (
 	"github.com/ml444/scheduler/backend"
-	"github.com/ml444/scheduler/mfile"
+	"github.com/ml444/scheduler/structure"
 	"sync"
 )
 
@@ -48,9 +48,9 @@ const defaultConsumeConcurrentCount = 100
 type ConcurrentConsume struct {
 	cfg       *Config
 	wg        sync.WaitGroup
-	retryList *mfile.MinHeap
+	retryList *structure.MinHeap
 	workers   []*consumeWorker
-	msgChan   chan *mfile.Item
+	msgChan   chan *structure.Item
 	backend   backend.IBackendReader
 }
 
@@ -72,7 +72,7 @@ func (c *ConcurrentConsume) Start() {
 			if msg == nil {
 				break
 			}
-			c.msgChan <- msg.Value.(*mfile.Item)
+			c.msgChan <- msg.Value.(*structure.Item)
 		}
 	}
 	for false {
@@ -99,13 +99,13 @@ func (c *ConcurrentConsume) Stop() {
 }
 
 type SerialConsume struct {
-	cfg       *Config
-	wg        sync.WaitGroup
-	workerMap map[int]*consumeWorker
-	heapMap   map[int]*mfile.MinHeap
-	msgChanMap map[int]chan *mfile.Item
-	backend   backend.IBackendReader
-	retryList []*mfile.Item
+	cfg         *Config
+	wg          sync.WaitGroup
+	workerMap   map[int]*consumeWorker
+	heapMap     map[int]*structure.MinHeap
+	msgChanMap  map[int]chan *structure.Item
+	backend     backend.IBackendReader
+	retryList   []*structure.Item
 	workerCount uint32
 }
 
@@ -120,11 +120,11 @@ func (c *SerialConsume) Start() {
 		c.workerMap = map[int]*consumeWorker{}
 	}
 	if c.msgChanMap == nil {
-		c.msgChanMap = map[int]chan *mfile.Item{}
+		c.msgChanMap = map[int]chan *structure.Item{}
 	}
 	for i := 0; i < int(concurrentCount); i++ {
 		// TODO chan
-		ch := make(chan *mfile.Item, 1024)
+		ch := make(chan *structure.Item, 1024)
 		c.msgChanMap[i] = ch
 		w := NewConsumeWorker(&c.wg, i, ch, c.backend)
 		c.workerMap[i] = w
@@ -145,9 +145,9 @@ func (c *SerialConsume) Start() {
 
 	}
 }
-func (c *SerialConsume) selectEmit(msg *mfile.Item) {
+func (c *SerialConsume) selectEmit(msg *structure.Item) {
 	hashSize := msg.Hash
-	idx := int(hashSize/c.workerCount)
+	idx := int(hashSize / c.workerCount)
 	ch := c.msgChanMap[idx]
 	ch <- msg
 }
@@ -164,11 +164,14 @@ func (c *SerialConsume) Stop() {
 					break
 				}
 				//c.retryList.PushEl(el)
-				c.retryList = append(c.retryList, el.Value.(*mfile.Item))
+				c.retryList = append(c.retryList, el.Value.(*structure.Item))
 			}
 		}
 	}
 }
 
 type AsyncConsume struct {
+	maxAsyncWaitMs uint32
+}
+type TimingConsume struct {
 }

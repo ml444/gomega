@@ -1,10 +1,9 @@
-package mfile
+package structure
 
 import (
 	"encoding/binary"
 	"errors"
 	"git.pinquest.cn/base/log"
-	"git.pinquest.cn/qlb/brick/rpc"
 	"git.pinquest.cn/qlb/brick/utils"
 	"go.uber.org/atomic"
 	"io"
@@ -78,7 +77,7 @@ func (p *RandReader) get(index uint32) (*Item, error) {
 	i := p.indexFile
 	d := p.dataFile
 	if i == nil || d == nil {
-		return nil, rpc.InvalidArg("file not opened")
+		return nil, errors.New("file not opened")
 	}
 	var buf [indexItemSize]byte
 	pos := indexItemSize * index
@@ -87,7 +86,6 @@ func (p *RandReader) get(index uint32) (*Item, error) {
 		if err == io.EOF {
 			return nil, ErrRecordNotFound
 		}
-		log.Errorf("err:%v", err)
 		return nil, err
 	}
 	if n != indexItemSize {

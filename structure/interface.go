@@ -1,4 +1,4 @@
-package mfile
+package structure
 
 type WarnMsg struct {
 	Label string

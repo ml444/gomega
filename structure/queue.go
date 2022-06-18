@@ -1,16 +1,15 @@
-package mfile
+package structure
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	log "github.com/ml444/glog"
 	"io"
 	"math"
 	"os"
 	"sync"
 	"time"
-
-	"git.pinquest.cn/base/log"
 )
 
 //
@@ -248,10 +247,10 @@ func (p *QueueReader) fillIndexCache() error {
 				return errors.New("invalid index item end marker")
 			}
 			var idx Item
-			idx.CreatedAt = b.Uint32(ptr)
-			idx.CorpId = b.Uint32(ptr[4:])
-			idx.AppId = b.Uint32(ptr[8:])
-			idx.Hash = b.Uint32(ptr[12:])
+			idx.CreatedAt = b.Uint64(ptr)
+			//idx.CorpId = b.Uint32(ptr[4:])
+			//idx.AppId = b.Uint32(ptr[8:])
+			idx.Hash = b.Uint64(ptr[8:])
 			// idx.reserved1 = b.Uint32(ptr[16:])
 			idx.offset = b.Uint32(ptr[20:])
 			idx.size = b.Uint32(ptr[24:])
@@ -445,9 +444,9 @@ func batchWriteFinishFile(finishFile *os.File, finishMap map[uint32]bool, idxLis
 }
 
 type finishReq struct {
-	seq   uint64
 	index uint32
-	hash  uint32
+	seq   uint64
+	hash  uint64
 }
 
 type QueueGroupReader struct {

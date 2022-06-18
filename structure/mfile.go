@@ -1,11 +1,10 @@
-package mfile
+package structure
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"git.pinquest.cn/base/log"
-	"git.pinquest.cn/qlb/brick/utils"
+	log "github.com/ml444/glog"
 	"go.uber.org/atomic"
 	"io/ioutil"
 	"os"
@@ -57,8 +56,8 @@ const (
 )
 
 type Item struct {
-	CreatedAt  uint32
-	Hash       uint32
+	CreatedAt  uint64
+	Hash       uint64
 	Data       []byte
 	Seq        uint64
 	Index      uint32
@@ -191,10 +190,10 @@ func (p *fileWriter) batchWrite(reqList []*writeReq, startIndex *uint32) error {
 			it := v.item
 			datSize := len(it.Data) + dataItemExtraSize
 			delay := packMisc(it.DelayType, it.DelayValue, it.Priority)
-			b.PutUint32(p[0:4], utils.Now())       // created_at
-			b.PutUint32(p[4:8], it.CorpId)         // corp_id
-			b.PutUint32(p[8:12], it.AppId)         // app_id
-			b.PutUint32(p[12:16], it.Hash)         // hash
+			b.PutUint64(p[0:8], uint64(time.Now().UnixMilli())) // created_at
+			//b.PutUint32(p[4:8], it.CorpId)         // corp_id
+			//b.PutUint32(p[8:12], it.AppId)         // app_id
+			b.PutUint64(p[8:16], it.Hash)          // hash
 			b.PutUint32(p[16:20], delay)           // delay
 			b.PutUint32(p[20:24], offset)          // offset
 			b.PutUint32(p[24:28], uint32(datSize)) // size
@@ -590,7 +589,6 @@ func (p *FileGroup) Write(item *Item) error {
 	p.writeChan <- req
 	req.wg.Wait()
 	if req.err != nil {
-		log.Errorf("err:%v", req.err)
 		return req.err
 	}
 	wgPoolPut(req.wg)

@@ -3,6 +3,7 @@ package structure
 import (
 	"github.com/huandu/skiplist"
 	log "github.com/ml444/glog"
+	"github.com/ml444/scheduler/backend"
 	"time"
 )
 
@@ -10,11 +11,11 @@ const MaxPriority = 3
 const PriorityMask = 0x3
 
 type PriorityList struct {
-	ll [MaxPriority][]*Item
+	ll [MaxPriority][]*backend.Item
 }
 
 type IndexCacheItemList struct {
-	list      []*Item
+	list      []*backend.Item
 	pl        *PriorityList
 	retryList *MinHeap
 }
@@ -33,7 +34,7 @@ func NewIndexCache() *IndexCache {
 	}
 }
 
-func (p *IndexCacheItemList) appendItem(item *Item) {
+func (p *IndexCacheItemList) appendItem(item *backend.Item) {
 	if item.Priority == 0 {
 		p.list = append(p.list, item)
 	} else {
@@ -45,7 +46,7 @@ func (p *IndexCacheItemList) appendItem(item *Item) {
 	}
 }
 
-func (p *IndexCacheItemList) popItem(check func(item *Item) bool) *Item {
+func (p *IndexCacheItemList) popItem(check func(item *backend.Item) bool) *backend.Item {
 	if p.pl != nil {
 		for i := MaxPriority - 1; i >= 0; i-- {
 			x := p.pl.ll[i]
@@ -86,7 +87,7 @@ func (p *IndexCacheItemList) empty() bool {
 	return len(p.list) == 0
 }
 
-func (p *IndexCacheItemList) peekItem(check func(item *Item) bool) *Item {
+func (p *IndexCacheItemList) peekItem(check func(item *backend.Item) bool) *backend.Item {
 	if p.pl != nil {
 		for i := MaxPriority - 1; i >= 0; i-- {
 			x := p.pl.ll[i]
@@ -109,7 +110,7 @@ func (p *IndexCacheItemList) peekItem(check func(item *Item) bool) *Item {
 	return nil
 }
 
-func (p *IndexCache) addItems(items []*Item) {
+func (p *IndexCache) addItems(items []*backend.Item) {
 	m := p.minIndexList
 	h := p.hashList
 	for _, v := range items {
@@ -124,7 +125,7 @@ func (p *IndexCache) addItems(items []*Item) {
 	p.itemTotalCnt += len(items)
 }
 
-func (p *IndexCache) retry(item *Item, delayMs uint32) {
+func (p *IndexCache) retry(item *backend.Item, delayMs uint32) {
 	m := p.minIndexList
 	h := p.hashList
 	x := h[item.Hash]
@@ -146,7 +147,7 @@ func (p *IndexCache) retry(item *Item, delayMs uint32) {
 	})
 }
 
-func (p *IndexCache) popSkipHash(skipHash map[uint64]int, barrierCount int, checkCount bool, delay *BarrierQueueReaderDelay, wm **WarnMsg) *Item {
+func (p *IndexCache) popSkipHash(skipHash map[uint64]int, barrierCount int, checkCount bool, delay *BarrierQueueReaderDelay, wm **WarnMsg) *backend.Item {
 	m := p.minIndexList
 	h := p.hashList
 	c := m.Front()
@@ -167,7 +168,7 @@ func (p *IndexCache) popSkipHash(skipHash map[uint64]int, barrierCount int, chec
 			return nil
 		}
 		// 看看 retry list
-		var item *Item
+		var item *backend.Item
 		if x.retryList != nil {
 			if nowMs == 0 {
 				nowMs = time.Now().UnixMilli()
@@ -181,8 +182,8 @@ func (p *IndexCache) popSkipHash(skipHash map[uint64]int, barrierCount int, chec
 				x.retryList = nil
 			}
 		} else {
-			item = x.popItem(func(item *Item) bool {
-				if delay.enableDelay && item.DelayType == DelayTypeRelate {
+			item = x.popItem(func(item *backend.Item) bool {
+				if delay.enableDelay && item.DelayType == backend.DelayTypeRelate {
 					if nowMs == 0 {
 						nowMs = time.Now().UnixMilli()
 					}

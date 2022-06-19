@@ -13,3 +13,4 @@ func NewSubscriber(namespace, topicName string, subCfg *Config) *Subscriber {
 		Cfg: subCfg,
 	}
 }
+

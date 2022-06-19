@@ -1,5 +1,7 @@
 package structure
 
+import "github.com/ml444/scheduler/backend"
+
 type WarnMsg struct {
 	Label string
 	Msg   string
@@ -12,7 +14,7 @@ type IQueueGroupReader interface {
 	GetErrChan() chan error
 	GetCloseChan() chan int
 	GetAsyncMsgConfirmChan() chan string
-	SetFinish(item *Item)
+	SetFinish(item *backend.Item)
 	SetLastFinishTs(seq uint64, hash uint32)
 
 	GetWarnChan() chan *WarnMsg

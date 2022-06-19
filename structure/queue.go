@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/ml444/glog"
+	"github.com/ml444/scheduler/backend"
 	"io"
 	"math"
 	"os"
@@ -28,11 +29,11 @@ func NewDefaultQueueReaderConfig() *QueueReaderConfig {
 }
 
 type QueueReader struct {
-	fileBase
+	backend.fileBase
 	cfg          *QueueReaderConfig
 	itemCount    uint32
 	readCursor   uint32
-	pendingItems []*Item
+	pendingItems []*backend.Item
 	finishFile   *os.File
 	finishMap    map[uint32]bool
 	recountIndex bool
@@ -51,7 +52,7 @@ func NewQueueReader(name, dataPath string, seq uint64, cfg *QueueReaderConfig, w
 		cfg.MaxCacheDataBytes = 64 * 1024 * 1024
 	}
 	return &QueueReader{
-		fileBase: fileBase{
+		fileBase: backend.fileBase{
 			name:     name,
 			dataPath: dataPath,
 			seq:      seq,
@@ -62,90 +63,90 @@ func NewQueueReader(name, dataPath string, seq uint64, cfg *QueueReaderConfig, w
 	}
 }
 
-func (p *QueueReader) statItemCount() error {
-	idxPath := p.indexFilePath()
-	idxInfo, err := os.Stat(idxPath)
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return err
-	}
-	idxSize := int(idxInfo.Size())
-	c := uint32(idxSize / indexItemSize)
-	if c < p.itemCount {
-		return fmt.Errorf("index file truncated, origin %d, cur %d", p.itemCount, c)
-	}
-	p.itemCount = c
-	return nil
-}
+//func (p *QueueReader) statItemCount() error {
+//	idxPath := p.indexFilePath()
+//	idxInfo, err := os.Stat(idxPath)
+//	if err != nil {
+//		log.Errorf("err:%v", err)
+//		return err
+//	}
+//	idxSize := int(idxInfo.Size())
+//	c := uint32(idxSize / indexItemSize)
+//	if c < p.itemCount {
+//		return fmt.Errorf("index file truncated, origin %d, cur %d", p.itemCount, c)
+//	}
+//	p.itemCount = c
+//	return nil
+//}
 
-func (p *QueueReader) Init() error {
-	var err error
-	idxPath := p.indexFilePath()
-	datPath := p.dataFilePath()
-	finishPath := p.finishFilePath()
+//func (p *QueueReader) Init() error {
+//	var err error
+//	idxPath := p.indexFilePath()
+//	datPath := p.dataFilePath()
+//	finishPath := p.finishFilePath()
+//
+//	defer func() {
+//		if err != nil && p.warnChan != nil {
+//			p.warnChan <- &WarnMsg{
+//				Label: fmt.Sprintf("%s: init err %v", p.name, err),
+//			}
+//		}
+//	}()
+//
+//	p.indexFile, err = os.OpenFile(idxPath, os.O_RDONLY, 0666)
+//	if err != nil {
+//		log.Errorf("err:%v", err)
+//		return err
+//	}
+//	p.dataFile, err = os.OpenFile(datPath, os.O_RDONLY, 0666)
+//	if err != nil {
+//		log.Errorf("err:%v", err)
+//		return err
+//	}
+//	p.finishFile, err = os.OpenFile(finishPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+//	if err != nil {
+//		log.Errorf("err:%v", err)
+//		return err
+//	}
+//	err = p.statItemCount()
+//	if err != nil {
+//		log.Errorf("err:%v", err)
+//		return err
+//	}
+//	err = p.loadFinishFile()
+//	if err != nil {
+//		log.Errorf("err:%v", err)
+//		return err
+//	}
+//	err = p.fillIndexCache()
+//	if err != nil {
+//		log.Errorf("err:%v", err)
+//		return err
+//	}
+//	err = p.fillDataCache()
+//	if err != nil {
+//		log.Errorf("err:%v", err)
+//		return err
+//	}
+//	return nil
+//}
 
-	defer func() {
-		if err != nil && p.warnChan != nil {
-			p.warnChan <- &WarnMsg{
-				Label: fmt.Sprintf("%s: init err %v", p.name, err),
-			}
-		}
-	}()
+//func (p *QueueReader) close() {
+//	if p.indexFile != nil {
+//		_ = p.indexFile.Close()
+//		p.indexFile = nil
+//	}
+//	if p.dataFile != nil {
+//		_ = p.dataFile.Close()
+//		p.dataFile = nil
+//	}
+//	if p.finishFile != nil {
+//		_ = p.finishFile.Close()
+//		p.finishFile = nil
+//	}
+//}
 
-	p.indexFile, err = os.OpenFile(idxPath, os.O_RDONLY, 0666)
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return err
-	}
-	p.dataFile, err = os.OpenFile(datPath, os.O_RDONLY, 0666)
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return err
-	}
-	p.finishFile, err = os.OpenFile(finishPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return err
-	}
-	err = p.statItemCount()
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return err
-	}
-	err = p.loadFinishFile()
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return err
-	}
-	err = p.fillIndexCache()
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return err
-	}
-	err = p.fillDataCache()
-	if err != nil {
-		log.Errorf("err:%v", err)
-		return err
-	}
-	return nil
-}
-
-func (p *QueueReader) close() {
-	if p.indexFile != nil {
-		_ = p.indexFile.Close()
-		p.indexFile = nil
-	}
-	if p.dataFile != nil {
-		_ = p.dataFile.Close()
-		p.dataFile = nil
-	}
-	if p.finishFile != nil {
-		_ = p.finishFile.Close()
-		p.finishFile = nil
-	}
-}
-
-func (p *QueueReader) pop() (*Item, error) {
+func (p *QueueReader) pop() (*backend.Item, error) {
 	if len(p.pendingItems) == 0 {
 		if p.recountIndex {
 			p.recountIndex = false
@@ -209,9 +210,9 @@ func (p *QueueReader) fillIndexCache() error {
 		if need <= 0 {
 			return nil
 		}
-		size := need * indexItemSize
+		size := need * backend.indexItemSize
 		var buf = make([]byte, size)
-		n, err := f.ReadAt(buf, int64(p.readCursor)*indexItemSize)
+		n, err := f.ReadAt(buf, int64(p.readCursor)*backend.indexItemSize)
 		if err != nil {
 			if err == io.EOF {
 				// n 可能 > 0
@@ -221,11 +222,11 @@ func (p *QueueReader) fillIndexCache() error {
 			}
 		}
 		log.Debugf("%s seq %d: load index at %d with size %d, size %d",
-			p.name, p.seq, p.readCursor*indexItemSize, size, n)
+			p.name, p.seq, p.readCursor*backend.indexItemSize, size, n)
 		if n <= 0 {
 			return nil
 		}
-		n = n / indexItemSize
+		n = n / backend.indexItemSize
 		b := binary.LittleEndian
 		for i := 0; i < n; i++ {
 			index := p.readCursor
@@ -233,20 +234,20 @@ func (p *QueueReader) fillIndexCache() error {
 			if p.finishMap[index] {
 				continue
 			}
-			ptr := buf[i*indexItemSize:]
+			ptr := buf[i*backend.indexItemSize:]
 			var begMarker, endMarker uint16
 			begMarker = b.Uint16(ptr)
 			ptr = ptr[2:]
 			endMarker = b.Uint16(ptr[28:])
-			if begMarker != itemBegin {
+			if begMarker != backend.itemBegin {
 				p.dataCorruption = true
 				return errors.New("invalid index item begin marker")
 			}
-			if endMarker != itemEnd {
+			if endMarker != backend.itemEnd {
 				p.dataCorruption = true
 				return errors.New("invalid index item end marker")
 			}
-			var idx Item
+			var idx backend.Item
 			idx.CreatedAt = b.Uint64(ptr)
 			//idx.CorpId = b.Uint32(ptr[4:])
 			//idx.AppId = b.Uint32(ptr[8:])
@@ -256,7 +257,7 @@ func (p *QueueReader) fillIndexCache() error {
 			idx.size = b.Uint32(ptr[24:])
 			idx.Index = index
 			idx.Seq = p.seq
-			if idx.size < dataItemExtraSize {
+			if idx.size < backend.dataItemExtraSize {
 				p.dataCorruption = true
 				return fmt.Errorf("invalid data size %d, min than data item extra size", idx.size)
 			}
@@ -279,7 +280,7 @@ func (p *QueueReader) fillDataCache() error {
 	left := uint32(math.MaxUint32)
 	right := uint32(0)
 	var i int
-	var item *Item
+	var item *backend.Item
 	for i, item = range p.pendingItems {
 		if len(item.Data) > 0 {
 			curCacheSize += uint32(len(item.Data))
@@ -338,11 +339,11 @@ func (p *QueueReader) fillDataCache() error {
 		begMarker = b.Uint16(ptr)
 		item.Data = ptr[2 : item.size-2]
 		endMarker = b.Uint16(ptr[item.size-2:])
-		if begMarker != itemBegin {
+		if begMarker != backend.itemBegin {
 			p.dataCorruption = true
 			return errors.New("invalid data begin marker")
 		}
-		if endMarker != itemEnd {
+		if endMarker != backend.itemEnd {
 			p.dataCorruption = true
 			return errors.New("invalid data end marker")
 		}
@@ -350,43 +351,43 @@ func (p *QueueReader) fillDataCache() error {
 	return nil
 }
 
-func (p *QueueReader) loadFinishFile() error {
-	if p.finishFile == nil {
-		panic("Unreachable")
-	}
-	const (
-		loadBufSize = 10240 * 4
-	)
-	buf := make([]byte, loadBufSize)
-	_, err := p.finishFile.Seek(0, io.SeekStart)
-	if err != nil {
-		log.Errorf("seek err:%v", err)
-		return err
-	}
-	for {
-		n, err := p.finishFile.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			log.Errorf("err:%v", err)
-			return err
-		}
-		if n > 0 {
-			if n%4 != 0 {
-				log.Warnf("invalid size of finish file read return %d", n)
-				p.dataCorruption = true
-				return errors.New("invalid size of finish file")
-			}
-			b := binary.LittleEndian
-			for i := 0; i < n; i += 4 {
-				idx := b.Uint32(buf[i:])
-				p.finishMap[idx] = true
-			}
-		}
-	}
-	return nil
-}
+//func (p *QueueReader) loadFinishFile() error {
+//	if p.finishFile == nil {
+//		panic("Unreachable")
+//	}
+//	const (
+//		loadBufSize = 10240 * 4
+//	)
+//	buf := make([]byte, loadBufSize)
+//	_, err := p.finishFile.Seek(0, io.SeekStart)
+//	if err != nil {
+//		log.Errorf("seek err:%v", err)
+//		return err
+//	}
+//	for {
+//		n, err := p.finishFile.Read(buf)
+//		if err != nil {
+//			if err == io.EOF {
+//				break
+//			}
+//			log.Errorf("err:%v", err)
+//			return err
+//		}
+//		if n > 0 {
+//			if n%4 != 0 {
+//				log.Warnf("invalid size of finish file read return %d", n)
+//				p.dataCorruption = true
+//				return errors.New("invalid size of finish file")
+//			}
+//			b := binary.LittleEndian
+//			for i := 0; i < n; i += 4 {
+//				idx := b.Uint32(buf[i:])
+//				p.finishMap[idx] = true
+//			}
+//		}
+//	}
+//	return nil
+//}
 
 func batchWriteFinishFile(finishFile *os.File, finishMap map[uint32]bool, idxList []uint32, writeBuf []byte) error {
 	if finishFile == nil {
@@ -443,7 +444,7 @@ func batchWriteFinishFile(finishFile *os.File, finishMap map[uint32]bool, idxLis
 	return nil
 }
 
-type finishReq struct {
+type FinishReq struct {
 	index uint32
 	seq   uint64
 	hash  uint64
@@ -460,11 +461,11 @@ type QueueGroupReader struct {
 	initMu          sync.Mutex
 	exitChan        chan int
 	notifyWriteChan chan uint64
-	msgChan         chan *Item
-	msg             *Item
+	msgChan         chan *backend.Item
+	msg             *backend.Item
 	errChan         chan error
 	warnChan        chan *WarnMsg
-	finishChan      chan *finishReq
+	finishChan      chan *FinishReq
 	closeChan       chan int
 
 	ReportQueueLenFunc func(ql int64)
@@ -494,10 +495,10 @@ func NewQueueGroupReader(name, dataPath string, cfg *QueueReaderConfig, msgChanS
 		cfg:             cfg,
 		exitChan:        make(chan int),
 		notifyWriteChan: make(chan uint64, 1000),
-		msgChan:         make(chan *Item, msgChanSize),
+		msgChan:         make(chan *backend.Item, msgChanSize),
 		errChan:         make(chan error, 1000),
 		warnChan:        make(chan *WarnMsg, 100),
-		finishChan:      make(chan *finishReq, msgChanSize),
+		finishChan:      make(chan *FinishReq, msgChanSize),
 		closeChan:       make(chan int),
 	}
 }
@@ -547,7 +548,7 @@ func (p *QueueGroupReader) openReader() error {
 
 func (p *QueueGroupReader) fillMsgChan() error {
 	for {
-		var msg *Item
+		var msg *backend.Item
 		if p.msg != nil {
 			msg = p.msg
 			p.msg = nil
@@ -619,7 +620,7 @@ func (p *QueueGroupReader) ioLoop() {
 		log.Errorf("err:%v", err)
 		p.sendErr(err)
 	}
-	flushFinish := func(r *finishReq) {
+	flushFinish := func(r *FinishReq) {
 		type wrap struct {
 			seq  uint64
 			list []uint32
@@ -651,7 +652,7 @@ func (p *QueueGroupReader) ioLoop() {
 					p.sendErr(err)
 				}
 			} else {
-				fb := fileBase{
+				fb := backend.fileBase{
 					name:     p.name,
 					dataPath: p.dataPath,
 					seq:      v.seq,
@@ -749,7 +750,7 @@ func (p *QueueGroupReader) Init() error {
 	if p.hasInit {
 		panic("duplicate init")
 	}
-	err := scanInitFileGroup(p.name, p.dataPath, &p.minSeq, &p.maxSeq)
+	err := backend.scanInitFileGroup(p.name, p.dataPath, &p.minSeq, &p.maxSeq)
 	if err != nil {
 		log.Errorf("err:%v", err)
 		return err
@@ -797,7 +798,7 @@ func (p *QueueGroupReader) NotifyWrite(seq uint64) {
 	}
 }
 
-func (p *QueueGroupReader) GetMsgChan() chan *Item {
+func (p *QueueGroupReader) GetMsgChan() chan *backend.Item {
 	return p.msgChan
 }
 
@@ -817,8 +818,8 @@ func (p *QueueGroupReader) GetQueueLen() int64 {
 	return p.getQueueLen()
 }
 
-func (p *QueueGroupReader) SetFinish(item *Item) {
-	p.finishChan <- &finishReq{
+func (p *QueueGroupReader) SetFinish(item *backend.Item) {
+	p.finishChan <- &FinishReq{
 		seq:   item.Seq,
 		index: item.Index,
 	}

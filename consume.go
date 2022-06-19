@@ -2,23 +2,11 @@ package scheduler
 
 import (
 	"fmt"
-	"sync"
+	log "github.com/ml444/glog"
+	"math/rand"
 	"time"
-)
 
-
-import (
-"fmt"
-"math/rand"
-"sync"
-"time"
-
-"git.pinquest.cn/base/log"
-"git.pinquest.cn/qlb/brick/smq"
-"git.pinquest.cn/qlb/brick/utils"
-"git.pinquest.cn/qlb/brick/utils/mfile"
-"git.pinquest.cn/qlb/brick/warning"
-"go.uber.org/atomic"
+	"go.uber.org/atomic"
 )
 
 type RetryItem struct {
@@ -34,7 +22,6 @@ type BarrierConsumer struct {
 	pendingItems []*mfile.Item
 	workers      []*BarrierWorker
 }
-
 
 func NewBarrierConsumer(fg *withFileGroup, concurrent int, old *BarrierConsumer) *BarrierConsumer {
 	if concurrent <= 0 || concurrent > 10*10000 {
@@ -55,7 +42,6 @@ func NewBarrierConsumer(fg *withFileGroup, concurrent int, old *BarrierConsumer)
 	}
 	return p
 }
-
 
 func (p *BarrierConsumer) notifyExit() {
 	for {

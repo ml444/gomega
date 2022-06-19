@@ -4,7 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"git.pinquest.cn/base/log"
+	log "github.com/ml444/glog"
+	"github.com/ml444/scheduler/backend"
 	"io"
 	"math"
 	"os"
@@ -14,11 +15,11 @@ import (
 // 主要用途就是修数据工具用的，遍历所有MQ数据，做一些事情
 // 因为不想把这类功能，也耦合到正常的业务中，所以copy代码出来改了
 type QueueScanner struct {
-	fileBase
+	backend.fileBase
 	cfg          *QueueReaderConfig
 	itemCount    uint32
 	readCursor   uint32
-	pendingItems []*Item
+	pendingItems []*backend.Item
 	finishFile   *os.File
 	finishMap    map[uint32]bool
 	recountIndex bool
@@ -35,7 +36,7 @@ func NewQueueScanner(name, dataPath string, seq uint64, cfg *QueueReaderConfig) 
 		cfg.MaxCacheDataBytes = 64 * 1024 * 1024
 	}
 	return &QueueScanner{
-		fileBase: fileBase{
+		fileBase: backend.fileBase{
 			name:     name,
 			dataPath: dataPath,
 			seq:      seq,
@@ -52,7 +53,7 @@ func (p *QueueScanner) statItemCount() error {
 		return err
 	}
 	idxSize := int(idxInfo.Size())
-	c := uint32(idxSize / indexItemSize)
+	c := uint32(idxSize / backend.indexItemSize)
 	if c < p.itemCount {
 		return fmt.Errorf("index file truncated, origin %d, cur %d", p.itemCount, c)
 	}
@@ -115,7 +116,7 @@ func (p *QueueScanner) Close() {
 		p.finishFile = nil
 	}
 }
-func (p *QueueScanner) Pop() (*Item, error) {
+func (p *QueueScanner) Pop() (*backend.Item, error) {
 	if len(p.pendingItems) == 0 {
 		if p.recountIndex {
 			err := p.statItemCount()
@@ -165,9 +166,9 @@ func (p *QueueScanner) fillIndexCache() error {
 		if need <= 0 {
 			return nil
 		}
-		size := need * indexItemSize
+		size := need * backend.indexItemSize
 		var buf = make([]byte, size)
-		n, err := f.ReadAt(buf, int64(p.readCursor)*indexItemSize)
+		n, err := f.ReadAt(buf, int64(p.readCursor)*backend.indexItemSize)
 		if err != nil {
 			if err == io.EOF {
 				return nil
@@ -176,36 +177,36 @@ func (p *QueueScanner) fillIndexCache() error {
 			return err
 		}
 		log.Infof("%s seq %d: load index at %d with size %d, size %d",
-			p.name, p.seq, p.readCursor*indexItemSize, size, n)
-		n = n / indexItemSize
+			p.name, p.seq, p.readCursor*backend.indexItemSize, size, n)
+		n = n / backend.indexItemSize
 		b := binary.LittleEndian
 		for i := 0; i < n; i++ {
 			index := p.readCursor
 			p.readCursor++
-			ptr := buf[i*indexItemSize:]
+			ptr := buf[i*backend.indexItemSize:]
 			var begMarker, endMarker uint16
 			begMarker = b.Uint16(ptr)
 			ptr = ptr[2:]
 			endMarker = b.Uint16(ptr[28:])
-			if begMarker != itemBegin {
+			if begMarker != backend.itemBegin {
 				p.dataCorruption = true
 				return errors.New("invalid index item begin marker")
 			}
-			if endMarker != itemEnd {
+			if endMarker != backend.itemEnd {
 				p.dataCorruption = true
 				return errors.New("invalid index item end marker")
 			}
-			var idx Item
-			idx.CreatedAt = b.Uint32(ptr)
-			idx.CorpId = b.Uint32(ptr[4:])
-			idx.AppId = b.Uint32(ptr[8:])
-			idx.Hash = b.Uint32(ptr[12:])
+			var idx backend.Item
+			idx.CreatedAt = b.Uint64(ptr)
+			//idx.CorpId = b.Uint32(ptr[4:])
+			//idx.AppId = b.Uint32(ptr[8:])
+			idx.Hash = b.Uint64(ptr[8:])
 			//idx.reserved1 = b.Uint32(ptr[16:])
 			idx.offset = b.Uint32(ptr[20:])
 			idx.size = b.Uint32(ptr[24:])
 			idx.Index = index
 			idx.Seq = p.seq
-			if idx.size < dataItemExtraSize {
+			if idx.size < backend.dataItemExtraSize {
 				p.dataCorruption = true
 				return fmt.Errorf("invalid data size %d, min than data item extra size", idx.size)
 			}
@@ -227,7 +228,7 @@ func (p *QueueScanner) fillDataCache() error {
 	left := uint32(math.MaxUint32)
 	right := uint32(0)
 	var i int
-	var item *Item
+	var item *backend.Item
 	for i, item = range p.pendingItems {
 		if len(item.Data) > 0 {
 			curCacheSize += uint32(len(item.Data))
@@ -280,11 +281,11 @@ func (p *QueueScanner) fillDataCache() error {
 		begMarker = b.Uint16(ptr)
 		item.Data = ptr[2 : item.size-2]
 		endMarker = b.Uint16(ptr[item.size-2:])
-		if begMarker != itemBegin {
+		if begMarker != backend.itemBegin {
 			p.dataCorruption = true
 			return errors.New("invalid data begin marker")
 		}
-		if endMarker != itemEnd {
+		if endMarker != backend.itemEnd {
 			p.dataCorruption = true
 			return errors.New("invalid data end marker")
 		}

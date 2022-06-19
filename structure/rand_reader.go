@@ -3,20 +3,21 @@ package structure
 import (
 	"encoding/binary"
 	"errors"
-	"git.pinquest.cn/base/log"
-	"git.pinquest.cn/qlb/brick/utils"
+	log "github.com/ml444/glog"
+	"github.com/ml444/scheduler/backend"
 	"go.uber.org/atomic"
 	"io"
 	"os"
 	"sync"
+	"time"
 )
 
 //
 // 提供给对象存储用的随机读
 //
 type RandReader struct {
-	fileBase
-	lastUsedAt uint32
+	backend.fileBase
+	lastUsedAt int64
 }
 
 //go:generate pie RandReaders.*
@@ -24,7 +25,7 @@ type RandReaders []*RandReader
 
 func NewRandReader(name, dataPath string, seq uint64) *RandReader {
 	return &RandReader{
-		fileBase: fileBase{
+		fileBase: backend.fileBase{
 			name:     name,
 			dataPath: dataPath,
 			seq:      seq,
@@ -69,18 +70,18 @@ func (p *RandReader) close() {
 
 var ErrRecordNotFound = errors.New("record not found")
 
-func (p *RandReader) Get(index uint32) (*Item, error) {
+func (p *RandReader) Get(index uint32) (*backend.Item, error) {
 	return p.get(index)
 }
 
-func (p *RandReader) get(index uint32) (*Item, error) {
+func (p *RandReader) get(index uint32) (*backend.Item, error) {
 	i := p.indexFile
 	d := p.dataFile
 	if i == nil || d == nil {
 		return nil, errors.New("file not opened")
 	}
-	var buf [indexItemSize]byte
-	pos := indexItemSize * index
+	var buf [backend.indexItemSize]byte
+	pos := backend.indexItemSize * index
 	n, err := i.ReadAt(buf[:], int64(pos))
 	if err != nil {
 		if err == io.EOF {
@@ -88,7 +89,7 @@ func (p *RandReader) get(index uint32) (*Item, error) {
 		}
 		return nil, err
 	}
-	if n != indexItemSize {
+	if n != backend.indexItemSize {
 		return nil, ErrRecordNotFound
 	}
 	b := binary.LittleEndian
@@ -97,19 +98,19 @@ func (p *RandReader) get(index uint32) (*Item, error) {
 	begMarker = b.Uint16(ptr)
 	ptr = ptr[2:]
 	endMarker = b.Uint16(ptr[28:])
-	if begMarker != itemBegin {
+	if begMarker != backend.itemBegin {
 		p.dataCorruption = true
 		return nil, errors.New("invalid index item begin marker")
 	}
-	if endMarker != itemEnd {
+	if endMarker != backend.itemEnd {
 		p.dataCorruption = true
 		return nil, errors.New("invalid index item end marker")
 	}
-	var item Item
-	item.CreatedAt = b.Uint32(ptr)
-	item.CorpId = b.Uint32(ptr[4:])
-	item.AppId = b.Uint32(ptr[8:])
-	item.Hash = b.Uint32(ptr[12:])
+	var item backend.Item
+	item.CreatedAt = b.Uint64(ptr)
+	//item.CorpId = b.Uint32(ptr[4:])
+	//item.AppId = b.Uint32(ptr[8:])
+	item.Hash = b.Uint64(ptr[8:])
 	//item.reserved1 = b.Uint32(ptr[16:])
 	item.offset = b.Uint32(ptr[20:])
 	item.size = b.Uint32(ptr[24:])
@@ -135,15 +136,15 @@ func (p *RandReader) get(index uint32) (*Item, error) {
 	begMarker = b.Uint16(ptr)
 	item.Data = ptr[2 : item.size-2]
 	endMarker = b.Uint16(ptr[item.size-2:])
-	if begMarker != itemBegin {
+	if begMarker != backend.itemBegin {
 		p.dataCorruption = true
 		return nil, errors.New("invalid data begin marker")
 	}
-	if endMarker != itemEnd {
+	if endMarker != backend.itemEnd {
 		p.dataCorruption = true
 		return nil, errors.New("invalid data end marker")
 	}
-	p.lastUsedAt = utils.Now()
+	p.lastUsedAt = time.Now().UnixMilli()
 	return &item, nil
 }
 
@@ -163,7 +164,7 @@ func NewRandGroupReader(name, dataPath string) *RandGroupReader {
 	}
 	return g
 }
-func (p *RandGroupReader) getFast(seq uint64, index uint32) (*Item, error) {
+func (p *RandGroupReader) getFast(seq uint64, index uint32) (*backend.Item, error) {
 	p.readersMu.RLock()
 	defer p.readersMu.RUnlock()
 	r := p.readers[seq]
@@ -207,7 +208,7 @@ func (p *RandGroupReader) cleanOpenedFiles() {
 		delete(p.readers, r.seq)
 	}
 }
-func (p *RandGroupReader) Get(seq uint64, index uint32) (*Item, error) {
+func (p *RandGroupReader) Get(seq uint64, index uint32) (*backend.Item, error) {
 	item, err := p.getFast(seq, index)
 	if err != nil {
 		log.Errorf("err:%v", err)

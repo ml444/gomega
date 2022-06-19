@@ -13,7 +13,7 @@ import (
 type FileGroup struct {
 	name        string
 	logName     string
-	fg          *structure.FileGroup
+	fg          *FileGroup
 	fgMu        sync.Mutex
 	qr          structure.IQueueGroupReader
 	qrMu        sync.Mutex
@@ -60,7 +60,7 @@ func (p *FileGroup) initFileGroup() error {
 	if p.fg != nil {
 		return nil
 	}
-	p.fg = structure.NewFileGroup(p.name, s.Conf.DataPath, nil)
+	p.fg = NewFileGroup(p.name, s.Conf.DataPath, nil)
 	err := p.fg.Init()
 	if err != nil {
 		return err
@@ -300,7 +300,7 @@ func (p *FileGroup) Write(req *publish.PubReq, data []byte) error {
 	if !p.groupOk() {
 		return rpc.InvalidArg("node group not match")
 	}
-	it := &structure.Item{
+	it := &Item{
 		Hash:       req.Hash,
 		Data:       data,
 		DelayType:  req.DelayType,

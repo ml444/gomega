@@ -1,4 +1,4 @@
-package structure
+package backend
 
 import (
 	"encoding/binary"
@@ -85,6 +85,18 @@ type fileBase struct {
 	dataCorruption bool
 }
 
+func (p *fileBase) indexFilePath() string {
+	return path.Join(p.dataPath, fmt.Sprintf("%s.%d.idx", p.name, p.seq))
+}
+
+func (p *fileBase) dataFilePath() string {
+	return path.Join(p.dataPath, fmt.Sprintf("%s.%d.dat", p.name, p.seq))
+}
+
+func (p *fileBase) finishFilePath() string {
+	return path.Join(p.dataPath, fmt.Sprintf("%s.%d.finish", p.name, p.seq))
+}
+
 func packMisc(delayType, delayValue uint32, priority uint8) (res uint32) {
 	if delayType == DelayTypeRelate {
 		res = (1 << 31) | delayValue
@@ -111,17 +123,6 @@ func unpackMisc(x uint32) (delayType, delayValue uint32, priority uint8) {
 	return
 }
 
-func (p *fileBase) indexFilePath() string {
-	return path.Join(p.dataPath, fmt.Sprintf("%s.%d.idx", p.name, p.seq))
-}
-
-func (p *fileBase) dataFilePath() string {
-	return path.Join(p.dataPath, fmt.Sprintf("%s.%d.dat", p.name, p.seq))
-}
-
-func (p *fileBase) finishFilePath() string {
-	return path.Join(p.dataPath, fmt.Sprintf("%s.%d.finish", p.name, p.seq))
-}
 
 type fileWriter struct {
 	fileBase

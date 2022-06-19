@@ -21,7 +21,7 @@ type consumeWorker struct {
 	wg         *sync.WaitGroup
 	idx        int
 	exitChan   chan int
-	msgChan    chan *structure.Item
+	msgChan    chan *backend.Item
 	backend    backend.IBackendReader
 	retryList  *structure.MinHeap
 	tk         *time.Ticker
@@ -37,7 +37,7 @@ const (
 	defaultConsumeMaxRetryCount      = 5
 )
 
-func NewConsumeWorker(wg *sync.WaitGroup, idx int, msgChan chan *structure.Item, backend backend.IBackendReader) *consumeWorker {
+func NewConsumeWorker(wg *sync.WaitGroup, idx int, msgChan chan *backend.Item, backend backend.IBackendReader) *consumeWorker {
 	return &consumeWorker{
 		wg:        wg,
 		idx:       idx,
@@ -54,7 +54,7 @@ func (p *consumeWorker) notifyExit() {
 	default:
 	}
 }
-func (p *consumeWorker) getNextMsg(exit *bool) *structure.Item {
+func (p *consumeWorker) getNextMsg(exit *bool) *backend.Item {
 
 	select {
 	case msg := <-p.msgChan:
@@ -67,11 +67,11 @@ func (p *consumeWorker) getNextMsg(exit *bool) *structure.Item {
 	}
 }
 
-func (p *consumeWorker) tryRetryMsg() *structure.Item {
+func (p *consumeWorker) tryRetryMsg() *backend.Item {
 	top := p.retryList.PeekEl()
 	now := time.Now().UnixMilli()
 	if top.Priority <= now {
-		return p.retryList.PopEl().Value.(*structure.Item)
+		return p.retryList.PopEl().Value.(*backend.Item)
 	}
 	return nil
 }
@@ -81,7 +81,7 @@ func (p *consumeWorker) Run() {
 	fg := p.backend
 	for {
 		var exit bool
-		var msg *structure.Item
+		var msg *backend.Item
 		var blockCount int
 		blockCount = p.retryList.Len()
 		if blockCount > 0 {
@@ -141,7 +141,7 @@ func (p *consumeWorker) RunAsync() {
 
 }
 
-func (p *consumeWorker) consumeMsg(item *structure.Item, payload *MsgPayload, consumeRsp *ConsumeRsp) {
+func (p *consumeWorker) consumeMsg(item *backend.Item, payload *MsgPayload, consumeRsp *ConsumeRsp) {
 	cfg := p.cfg
 	if cfg == nil {
 		log.Warnf("sub cfg is nil, skip")
@@ -325,7 +325,7 @@ func genNewLogCtx(oldCtx string, id string) string {
 	return fmt.Sprintf("%s.%s", s, id)
 }
 
-func (p *consumeWorker) onFinalFail(item *structure.Item, payload *MsgPayload) {
+func (p *consumeWorker) onFinalFail(item *backend.Item, payload *MsgPayload) {
 	log.Warnf("%s: msg %s touch max retry count, drop",
 		p.logName, payload.MsgId)
 	warning.ReportMsg(nil, "smq: %s: final fail", p.logName)

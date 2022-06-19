@@ -50,7 +50,7 @@ type ConcurrentConsume struct {
 	wg        sync.WaitGroup
 	retryList *structure.MinHeap
 	workers   []*consumeWorker
-	msgChan   chan *structure.Item
+	msgChan   chan *backend.Item
 	backend   backend.IBackendReader
 }
 
@@ -72,7 +72,7 @@ func (c *ConcurrentConsume) Start() {
 			if msg == nil {
 				break
 			}
-			c.msgChan <- msg.Value.(*structure.Item)
+			c.msgChan <- msg.Value.(*backend.Item)
 		}
 	}
 	for false {
@@ -103,9 +103,9 @@ type SerialConsume struct {
 	wg          sync.WaitGroup
 	workerMap   map[int]*consumeWorker
 	heapMap     map[int]*structure.MinHeap
-	msgChanMap  map[int]chan *structure.Item
+	msgChanMap  map[int]chan *backend.Item
 	backend     backend.IBackendReader
-	retryList   []*structure.Item
+	retryList   []*backend.Item
 	workerCount uint32
 }
 
@@ -120,11 +120,11 @@ func (c *SerialConsume) Start() {
 		c.workerMap = map[int]*consumeWorker{}
 	}
 	if c.msgChanMap == nil {
-		c.msgChanMap = map[int]chan *structure.Item{}
+		c.msgChanMap = map[int]chan *backend.Item{}
 	}
 	for i := 0; i < int(concurrentCount); i++ {
 		// TODO chan
-		ch := make(chan *structure.Item, 1024)
+		ch := make(chan *backend.Item, 1024)
 		c.msgChanMap[i] = ch
 		w := NewConsumeWorker(&c.wg, i, ch, c.backend)
 		c.workerMap[i] = w
@@ -145,9 +145,9 @@ func (c *SerialConsume) Start() {
 
 	}
 }
-func (c *SerialConsume) selectEmit(msg *structure.Item) {
+func (c *SerialConsume) selectEmit(msg *backend.Item) {
 	hashSize := msg.Hash
-	idx := int(hashSize / c.workerCount)
+	idx := int(hashSize / uint64(c.workerCount))
 	ch := c.msgChanMap[idx]
 	ch <- msg
 }
@@ -164,7 +164,7 @@ func (c *SerialConsume) Stop() {
 					break
 				}
 				//c.retryList.PushEl(el)
-				c.retryList = append(c.retryList, el.Value.(*structure.Item))
+				c.retryList = append(c.retryList, el.Value.(*backend.Item))
 			}
 		}
 	}

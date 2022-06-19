@@ -5,14 +5,31 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/ml444/glog"
+	"github.com/ml444/scheduler/backend"
 	"go.uber.org/atomic"
 	"io"
 	"os"
+	"sync"
 	"time"
 )
 
-type BarrierQueueReader struct {
-	fileBase
+type BarrierQueueReaderConfig struct {
+	MaxCacheIndexFileCount int
+}
+
+func NewDefaultBarrierQueueReaderConfig() *BarrierQueueReaderConfig {
+	return &BarrierQueueReaderConfig{
+		MaxCacheIndexFileCount: 15,
+	}
+}
+
+type BarrierQueueReaderDelay struct {
+	enableDelay         bool
+	hash2LastFinishTs   map[uint64]int64
+	hash2LastFinishTsMu sync.RWMutex
+}
+type SerialQueueReader struct {
+	backend.fileBase
 	cfg          *BarrierQueueReaderConfig
 	itemCount    uint32
 	readCursor   uint32
@@ -29,12 +46,12 @@ type BarrierQueueReader struct {
 	openAt int64
 }
 
-func NewBarrierQueueReader(name, dataPath string, seq uint64, cfg *BarrierQueueReaderConfig) *BarrierQueueReader {
+func NewBarrierQueueReader(name, dataPath string, seq uint64, cfg *BarrierQueueReaderConfig) *SerialQueueReader {
 	if cfg == nil {
 		cfg = NewDefaultBarrierQueueReaderConfig()
 	}
-	return &BarrierQueueReader{
-		fileBase: fileBase{
+	return &SerialQueueReader{
+		fileBase: backend.fileBase{
 			name:     name,
 			dataPath: dataPath,
 			seq:      seq,
@@ -45,14 +62,14 @@ func NewBarrierQueueReader(name, dataPath string, seq uint64, cfg *BarrierQueueR
 	}
 }
 
-func (p *BarrierQueueReader) statItemCount() error {
+func (p *SerialQueueReader) statItemCount() error {
 	idxPath := p.indexFilePath()
 	idxInfo, err := os.Stat(idxPath)
 	if err != nil {
 		return err
 	}
 	idxSize := int(idxInfo.Size())
-	c := uint32(idxSize / indexItemSize)
+	c := uint32(idxSize / backend.indexItemSize)
 	if c < p.itemCount {
 		return fmt.Errorf("index file truncated, origin %d, cur %d", p.itemCount, c)
 	}
@@ -60,10 +77,10 @@ func (p *BarrierQueueReader) statItemCount() error {
 	return nil
 }
 
-func (p *BarrierQueueReader) dump() {
+func (p *SerialQueueReader) dump() {
 	log.Infof("%s.%d: pop %d fin cnt %d total %d sk %d pending %d finished %v",
 		p.name, p.seq, p.popCnt, p.finishedCnt,
-		p.indexes.itemTotalCnt, p.indexes.minIndexList.Len(),
+		//p.indexes.itemTotalCnt, p.indexes.minIndexList.Len(),
 		p.indexes.itemTotalCnt-p.popCnt, p.isFinished())
 }
 
@@ -71,7 +88,7 @@ func isFileNotFoundError(err error) bool {
 	return os.IsNotExist(err)
 }
 
-func (p *BarrierQueueReader) Init() error {
+func (p *SerialQueueReader) Init() error {
 	var err error
 	idxPath := p.indexFilePath()
 	datPath := p.dataFilePath()
@@ -111,7 +128,7 @@ func (p *BarrierQueueReader) Init() error {
 	return nil
 }
 
-func (p *BarrierQueueReader) close() {
+func (p *SerialQueueReader) close() {
 	log.Infof("%s.%d: close", p.name, p.seq)
 
 	if p.indexFile != nil {
@@ -128,23 +145,8 @@ func (p *BarrierQueueReader) close() {
 	}
 }
 
-func ReaderTest() {
-	for {
-		r := NewBarrierQueueReader("hello", "/home/pinfire/smq", 1, nil)
-		err := r.Init()
-		if err != nil {
-			log.Errorf("err:%v", err)
-			return
-		}
-		if !r.isFinished() {
-			log.Infof("not finished")
-			return
-		}
-		r.close()
-	}
-}
 
-func (p *BarrierQueueReader) fillIndexCache() error {
+func (p *SerialQueueReader) fillIndexCache() error {
 	f := p.indexFile
 	if f == nil {
 		return errors.New("file not open")
@@ -169,12 +171,12 @@ func (p *BarrierQueueReader) fillIndexCache() error {
 		// init buffer
 		if len(p.indexBuf) == 0 {
 			log.Infof("alloc index buf for %s.%d", p.name, p.seq)
-			p.indexBuf = make([]byte, (1024*1024)/indexItemSize*indexItemSize)
+			p.indexBuf = make([]byte, (1024*1024)/backend.indexItemSize*backend.indexItemSize)
 		}
 
 		eof := false
 		for p.readCursor < p.itemCount && !eof {
-			n, err := f.ReadAt(p.indexBuf, int64(p.readCursor)*indexItemSize)
+			n, err := f.ReadAt(p.indexBuf, int64(p.readCursor)*backend.indexItemSize)
 			if err != nil {
 				if err == io.EOF {
 					eof = true
@@ -184,47 +186,47 @@ func (p *BarrierQueueReader) fillIndexCache() error {
 				}
 			}
 			log.Infof("%s seq %d: load index at %d with size %d, size %d ret",
-				p.name, p.seq, p.readCursor*indexItemSize, len(p.indexBuf), n)
+				p.name, p.seq, p.readCursor*backend.indexItemSize, len(p.indexBuf), n)
 			if n <= 0 {
 				break
 			}
-			n = n / indexItemSize
+			n = n / backend.indexItemSize
 			b := binary.LittleEndian
-			var items []*Item
+			var items []*backend.Item
 			for i := 0; i < n; i++ {
 				index := p.readCursor
 				p.readCursor++
 				if p.finishMap[index] {
 					continue
 				}
-				ptr := p.indexBuf[i*indexItemSize:]
+				ptr := p.indexBuf[i*backend.indexItemSize:]
 				var begMarker, endMarker uint16
 				begMarker = b.Uint16(ptr)
 				ptr = ptr[2:]
 				endMarker = b.Uint16(ptr[28:])
-				if begMarker != itemBegin {
+				if begMarker != backend.itemBegin {
 					p.dataCorruption = true
 					return errors.New("invalid index item begin marker")
 				}
-				if endMarker != itemEnd {
+				if endMarker != backend.itemEnd {
 					p.dataCorruption = true
 					return errors.New("invalid index item end marker")
 				}
-				var idx Item
+				var idx backend.Item
 				idx.CreatedAt = b.Uint64(ptr)
 				//idx.CorpId = b.Uint32(ptr[4:])
 				//idx.AppId = b.Uint32(ptr[8:])
 				idx.Hash = b.Uint64(ptr[8:])
-				idx.DelayType, idx.DelayValue, idx.Priority = unpackMisc(b.Uint32(ptr[16:]))
+				idx.DelayType, idx.DelayValue, idx.Priority = backend.unpackMisc(b.Uint32(ptr[16:]))
 				idx.offset = b.Uint32(ptr[20:])
 				idx.size = b.Uint32(ptr[24:])
 				idx.Index = index
 				idx.Seq = p.seq
-				if idx.size < dataItemExtraSize {
+				if idx.size < backend.dataItemExtraSize {
 					p.dataCorruption = true
 					return fmt.Errorf("invalid data size %d, min than data item extra size", idx.size)
 				}
-				if idx.DelayType == DelayTypeRelate {
+				if idx.DelayType == backend.DelayTypeRelate {
 					p.delay.enableDelay = true
 				}
 				items = append(items, &idx)
@@ -237,7 +239,7 @@ func (p *BarrierQueueReader) fillIndexCache() error {
 	return nil
 }
 
-func (p *BarrierQueueReader) loadFinishFile() error {
+func (p *SerialQueueReader) loadFinishFile() error {
 	if p.finishFile == nil {
 		panic("Unreachable")
 	}
@@ -276,7 +278,7 @@ func (p *BarrierQueueReader) loadFinishFile() error {
 	return nil
 }
 
-func (p *BarrierQueueReader) readData(item *Item) error {
+func (p *SerialQueueReader) readData(item *backend.Item) error {
 	d := p.dataFile
 	if d == nil {
 		return errors.New("file not opened")
@@ -302,18 +304,18 @@ func (p *BarrierQueueReader) readData(item *Item) error {
 	begMarker := b.Uint16(ptr)
 	item.Data = ptr[2 : item.size-2]
 	endMarker := b.Uint16(ptr[item.size-2:])
-	if begMarker != itemBegin {
+	if begMarker != backend.itemBegin {
 		p.dataCorruption = true
 		return errors.New("invalid data begin marker")
 	}
-	if endMarker != itemEnd {
+	if endMarker != backend.itemEnd {
 		p.dataCorruption = true
 		return errors.New("invalid data end marker")
 	}
 	return nil
 }
 
-func (p *BarrierQueueReader) retry(item *Item, delayMs uint32, wm **WarnMsg) {
+func (p *SerialQueueReader) retry(item *backend.Item, delayMs uint32, wm **WarnMsg) {
 	if p.popCnt <= 0 {
 		*wm = &WarnMsg{
 			Label: fmt.Sprintf("%s.%d: invalid pop cnt", p.name, p.seq),
@@ -324,7 +326,7 @@ func (p *BarrierQueueReader) retry(item *Item, delayMs uint32, wm **WarnMsg) {
 	p.indexes.retry(item, delayMs)
 }
 
-func (p *BarrierQueueReader) popSkipHash(skipHash map[uint64]int, barrierCount int, checkCount bool, wm **WarnMsg) (*Item, error) {
+func (p *SerialQueueReader) popSkipHash(skipHash map[uint64]int, barrierCount int, checkCount bool, wm **WarnMsg) (*backend.Item, error) {
 	if p.recountIndex {
 		p.recountIndex = false
 
@@ -358,7 +360,7 @@ func (p *BarrierQueueReader) popSkipHash(skipHash map[uint64]int, barrierCount i
 	return item, nil
 }
 
-func (p *BarrierQueueReader) isFinished() bool {
+func (p *SerialQueueReader) isFinished() bool {
 	if len(p.indexes.hashList) == 0 {
 		res := (p.popCnt <= int(p.finishedCnt.Load())) && !p.recountIndex
 		if res {
@@ -368,7 +370,7 @@ func (p *BarrierQueueReader) isFinished() bool {
 	return false
 }
 
-func (p *BarrierQueueReader) getQueueLen() int64 {
+func (p *SerialQueueReader) getQueueLen() int64 {
 	var l int64
 	t := p.indexes.itemTotalCnt
 	pc := p.popCnt

@@ -52,6 +52,7 @@ type ConcurrentConsume struct {
 	workers   []*consumeWorker
 	msgChan   chan *backend.Item
 	backend   backend.IBackendReader
+	queue structure.IQueue
 }
 
 func (c *ConcurrentConsume) Start() {
@@ -75,8 +76,8 @@ func (c *ConcurrentConsume) Start() {
 			c.msgChan <- msg.Value.(*backend.Item)
 		}
 	}
-	for false {
-		// TODO read one file
+	for {
+		c.msgChan <- c.queue.Pop()
 	}
 }
 func (c *ConcurrentConsume) Stop() {

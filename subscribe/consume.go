@@ -76,7 +76,7 @@ func (c *ConcurrentConsume) Start() {
 		}
 	}
 	for false {
-
+		// TODO read one file
 	}
 }
 func (c *ConcurrentConsume) Stop() {
@@ -142,6 +142,7 @@ func (c *SerialConsume) Start() {
 		}
 	}
 	for false {
+		// Read N file
 
 	}
 }
@@ -174,4 +175,5 @@ type AsyncConsume struct {
 	maxAsyncWaitMs uint32
 }
 type TimingConsume struct {
+	// 时间轮算法
 }

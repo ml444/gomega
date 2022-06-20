@@ -61,8 +61,8 @@ type Item struct {
 	Data       []byte
 	Seq        uint64
 	Index      uint32
-	offset     uint32
-	size       uint32
+	Offset     uint32
+	Size       uint32
 	RetryCount uint32
 	DelayType  uint32
 	DelayValue uint32
@@ -122,7 +122,6 @@ func unpackMisc(x uint32) (delayType, delayValue uint32, priority uint8) {
 
 	return
 }
-
 
 type fileWriter struct {
 	fileBase

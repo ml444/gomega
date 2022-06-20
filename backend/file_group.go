@@ -298,7 +298,7 @@ func (p *FileGroup) Write(req *publish.PubReq, data []byte) error {
 		return errors.New("queue reader not init")
 	}
 	if !p.groupOk() {
-		return rpc.InvalidArg("node group not match")
+		return errors.New("node group not match")
 	}
 	it := &Item{
 		Hash:       req.Hash,

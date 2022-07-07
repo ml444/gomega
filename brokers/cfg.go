@@ -1,0 +1,6 @@
+package brokers
+
+const (
+	IndexFilePath = "."
+
+)

@@ -1,4 +1,4 @@
-package structure
+package brokers
 
 import "container/heap"
 

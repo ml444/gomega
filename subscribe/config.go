@@ -12,12 +12,8 @@ type Config struct {
 	// @desc: 在队列中最大存活时间，超时会抛弃
 	//  默认: 一直有效
 	MaxInQueueTimeSeconds uint32 `protobuf:"varint,6,opt,name=max_in_queue_time_seconds,json=maxInQueueTimeSeconds" json:"max_in_queue_time_seconds,omitempty"`
-	// @desc: 重试间隔时间配置，单位秒
-	//  min 最小 + step 步进 -> max 最大
-	//  min == max 表示固定间隔
-	RetryIntervalMin  uint32 `protobuf:"varint,7,opt,name=retry_interval_min,json=retryIntervalMin" json:"retry_interval_min,omitempty"`
-	RetryIntervalMax  uint32 `protobuf:"varint,8,opt,name=retry_interval_max,json=retryIntervalMax" json:"retry_interval_max,omitempty"`
-	RetryIntervalStep uint32 `protobuf:"varint,9,opt,name=retry_interval_step,json=retryIntervalStep" json:"retry_interval_step,omitempty"`
+	RetryIntervalMs  int64 `protobuf:"varint,8,opt,name=retry_interval_max,json=retryIntervalMax" json:"retry_interval_max,omitempty"`
+	RetryIntervalStep int64 `protobuf:"varint,9,opt,name=retry_interval_step,json=retryIntervalStep" json:"retry_interval_step,omitempty"`
 	// @desc: 串行模式
 	BarrierMode bool `protobuf:"varint,20,opt,name=barrier_mode,json=barrierMode" json:"barrier_mode,omitempty"`
 	// @desc: 串行数，串行模式下，默认串行数是1,可以配置大于1

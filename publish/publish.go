@@ -2,22 +2,17 @@ package publish
 
 import (
 	"context"
-	"errors"
 	"github.com/ml444/scheduler/brokers"
-	"time"
+	"github.com/ml444/scheduler/config"
 )
 
-const (
-	maxDataSize = 1024 * 1024
-	defaultNamespace= "default"
-)
 
 type PubReq struct {
 	Namespace string
 	TopicName string // @v: required
 	Partition uint32
-	Data  []byte // @v: required
-	Hash  uint64
+	Data      []byte // @v: required
+	HashCode  uint64
 	// @desc: delay 仅对 barrier mode 生效
 	//  delay_type == DelayTypeRelate 时，delay_value 的单位是 ms
 	DelayType  uint32
@@ -26,28 +21,17 @@ type PubReq struct {
 	Priority uint32 `protobuf:"varint,32,opt,name=priority" json:"priority,omitempty"`
 }
 
-func Pub(ctx *context.Context, req *PubReq) error {
-	if req.Namespace == "" {
-		req.Namespace = defaultNamespace
-	}
-	dataSize := len(req.Data)
-	if dataSize > maxDataSize {
-		return errors.New("data length exceeds limit")
+func Pub(ctx *context.Context, namespace, topic string, item *brokers.Item) error {
+	if namespace == "" {
+		namespace = config.DefaultNamespace
 	}
 	// file sequence offset
-	bk:= brokers.GetBrokerByTopicName(req.Namespace, req.TopicName)
-	item := brokers.Item{
-		CreatedAt:  uint32(time.Now().Unix()),
-		HashCode:   req.Hash,
-		Partition:  req.Partition,
-		Size:       uint32(dataSize),
-		DelayType:  req.DelayType,
-		DelayValue: req.DelayValue,
-		Priority:   req.Priority,
-		Data:       req.Data,
-		Namespace:  req.Namespace,
+	bk, err := brokers.GetBrokerByTopicName(namespace, topic)
+	if err != nil {
+		return err
 	}
-	err := bk.Send(&item)
+
+	err = bk.Send(item)
 	if err != nil {
 		return err
 	}

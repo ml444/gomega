@@ -1,0 +1,20 @@
+syntax = "proto3";
+// protoc -I=$SRC_DIR --go_out=$DST_DIR $SRC_DIR/omega.proto
+// protoc --go_out=plugins=grpc:. omega.proto
+package omega;
+
+service OmegaService {
+  rpc Pub(PubRequest) returns (PubResponse) {}
+}
+
+message PubRequest {
+  string namespace = 1;
+  string topic_name = 2;
+  uint32 partition = 3;
+  uint64 hash_code = 4;
+  bytes data = 5;
+}
+
+message PubResponse {
+
+}

@@ -1,6 +1,7 @@
 package subscribe
 
 import (
+	"context"
 	log "github.com/ml444/glog"
 	"github.com/ml444/scheduler/brokers"
 	"github.com/ml444/scheduler/subscribe/call"
@@ -26,6 +27,8 @@ type consumeWorker struct {
 	cfg        *Config
 	//futureList *structure.Tree // async
 	blockLimit int
+
+	subscriber *Subscriber
 }
 
 const defaultTimeout = time.Millisecond * 10
@@ -46,42 +49,42 @@ func NewConsumeWorker(wg *sync.WaitGroup, idx int, msgChan chan *brokers.Item, f
 		tk:         time.NewTicker(defaultTimeout),
 	}
 }
-func (p *consumeWorker) notifyExit() {
+func (w *consumeWorker) notifyExit() {
 	select {
-	case p.exitChan <- 1:
+	case w.exitChan <- 1:
 	default:
 	}
 }
-func (p *consumeWorker) NextMsg(exit *bool) *brokers.Item {
+func (w *consumeWorker) NextMsg(exit *bool) *brokers.Item {
 
 	select {
-	case msg := <-p.msgChan:
+	case msg := <-w.msgChan:
 		return msg
-	case <-p.exitChan:
+	case <-w.exitChan:
 		*exit = true
 		return nil
-	case <-p.tk.C:
+	case <-w.tk.C:
 		//TODO no tk
 		return nil
 	}
 }
 
-func (p *consumeWorker) tryRetryMsg() *brokers.Item {
-	top := p.retryList.PeekEl()
+func (w *consumeWorker) tryRetryMsg() *brokers.Item {
+	top := w.retryList.PeekEl()
 	now := time.Now().UnixMilli()
 	if top.Priority <= now {
-		return p.retryList.PopEl().Value.(*brokers.Item)
+		return w.retryList.PopEl().Value.(*brokers.Item)
 	}
 	return nil
 }
 
-func (p *consumeWorker) setFinish(msg *brokers.Item) {
-	p.finishChan <- msg
+func (w *consumeWorker) setFinish(msg *brokers.Item) {
+	w.finishChan <- msg
 }
-func (p *consumeWorker) Run() {
-	defer p.wg.Done()
+func (w *consumeWorker) Run() {
+	defer w.wg.Done()
 
-	cfg := p.cfg
+	cfg := w.cfg
 	if cfg == nil {
 		panic("cfg is nil")
 	}
@@ -93,12 +96,12 @@ func (p *consumeWorker) Run() {
 		var exit bool
 		var msg *brokers.Item
 		var blockCount int
-		blockCount = p.retryList.Len()
+		blockCount = w.retryList.Len()
 		if blockCount > 0 {
-			msg = p.tryRetryMsg()
+			msg = w.tryRetryMsg()
 		}
 		if msg == nil {
-			msg = p.NextMsg(&exit)
+			msg = w.NextMsg(&exit)
 		}
 		if exit {
 			break
@@ -107,35 +110,33 @@ func (p *consumeWorker) Run() {
 			continue
 		}
 		// TODO Skip blackList msg
-		payload, err := decodePayload(msg.Data)
+		payload, err := brokers.DecodeMsgPayload(msg.Data)
 		if err != nil {
 			// TODO report err
-			p.setFinish(msg)
-			p.onFinalFail(msg, payload)
+			w.setFinish(msg)
 			continue
 		}
 		var consumeRsp call.ConsumeRsp
-		p.consumeMsg(msg, payload, &consumeRsp)
+		_ = w.consumeMsg(msg, payload, &consumeRsp)
 		if consumeRsp.Retry {
-			maxRetryCount := p.getMaxRetryCount()
+			maxRetryCount := w.getMaxRetryCount()
 			if msg.RetryCount >= maxRetryCount {
-				p.setFinish(msg)
-				p.onFinalFail(msg, payload)
+				w.setFinish(msg)
 			} else {
 				var waitMs int64
 				if consumeRsp.RetryIntervalMs > 0 {
 					waitMs = consumeRsp.RetryIntervalMs
 				} else {
-					waitMs = p.getNextRetryWait(msg.RetryCount) * 1000
+					waitMs = w.getNextRetryWait(msg.RetryCount) * 1000
 				}
 				execAt := time.Now().UnixMilli() + waitMs
-				p.retryList.PushEl(&brokers.MinHeapElement{
+				w.retryList.PushEl(&brokers.MinHeapElement{
 					Value:    msg,
 					Priority: execAt,
 				})
 			}
 		} else {
-			p.setFinish(msg)
+			w.setFinish(msg)
 		}
 	}
 }
@@ -145,26 +146,52 @@ func (p *consumeWorker) Run() {
 //	nextExecAt int64
 //}
 
-func (p *consumeWorker) consumeMsg(item *brokers.Item, payload *MsgPayload, consumeRsp *call.ConsumeRsp) {
+func (w *consumeWorker) consumeMsg(item *brokers.Item, payload *brokers.MsgPayload, consumeRsp *call.ConsumeRsp) error {
 	// TODO getRoute(checkRoute())
-
-	var timeoutSeconds = p.cfg.MaxExecTimeSeconds
+	ctx := context.TODO()
+	s := w.subscriber
+	var timeoutSeconds = w.cfg.MaxExecTimeSeconds
 	if timeoutSeconds == 0 {
 		timeoutSeconds = defaultConsumeMaxExecTimeSeconds
 	}
-	req := &call.ConsumeReq{
+	meta := &call.MsgMeta{
 		CreatedAt:   item.CreatedAt,
 		RetryCnt:    item.RetryCount,
 		Data:        payload.Data,
 		MsgId:       payload.MsgId,
-		MaxRetryCnt: p.getMaxRetryCount(),
-		Timeout:     timeoutSeconds,
 	}
-	consumeRsp = call.Call(req, &item.RetryCount)
+	if s.BeforeProcess != nil {
+		s.BeforeProcess(ctx, meta)
+	}
+	in, err := s.UnMarshalRequest(payload.Data)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	out := s.NewResponse()
+	err = call.Call(ctx, w.subscriber.Route, &in, &out, timeoutSeconds)
+	if err != nil {
+		log.Error(err)
+		consumeRsp.Retry = true
+		item.RetryCount++
+		return err
+	}
+	if s.AfterProcess != nil {
+		isRetry, isIgnoreRetryCount := s.AfterProcess(ctx, meta, &in, &out)
+		if isRetry {
+			if consumeRsp != nil {
+				consumeRsp.Retry = true
+			}
+		}
+		if !isIgnoreRetryCount {
+			item.RetryCount++
+		}
+	}
+	return nil
 }
 
-func (p *consumeWorker) getMaxRetryCount() uint32 {
-	s := p.cfg
+func (w *consumeWorker) getMaxRetryCount() uint32 {
+	s := w.cfg
 	maxRetryCount := uint32(defaultConsumeMaxRetryCount)
 	if s != nil && s.MaxRetryCount > 0 {
 		maxRetryCount = s.MaxRetryCount
@@ -172,8 +199,8 @@ func (p *consumeWorker) getMaxRetryCount() uint32 {
 	return maxRetryCount
 }
 
-func (p *consumeWorker) getNextRetryWait(retryCnt uint32) int64 {
-	s := p.cfg
+func (w *consumeWorker) getNextRetryWait(retryCnt uint32) int64 {
+	s := w.cfg
 	retryMs := s.RetryIntervalMs
 	if s != nil && retryMs > 0 {
 		if s.RetryIntervalStep > 0 {
@@ -187,24 +214,5 @@ func (p *consumeWorker) getNextRetryWait(retryCnt uint32) int64 {
 	return int64(retryCnt) * 5
 }
 
-func (p *consumeWorker) onFinalFail(item *brokers.Item, payload *MsgPayload) {
-	log.Warnf("%s: msg %s touch max retry count, drop",
-		p, payload.MsgId)
 
-}
 
-func decodePayload(buf []byte) (*MsgPayload, error) {
-	var p MsgPayload
-	//err := proto.Unmarshal(buf, &p)
-	//if err != nil {
-	//	log.Errorf("err:%v", err)
-	//	return nil, err
-	//}
-	return &p, nil
-}
-
-type MsgPayload struct {
-	//Ctx                  *MsgPayload_Context `protobuf:"bytes,1,opt,name=ctx" json:"ctx,omitempty"`
-	MsgId string `protobuf:"bytes,2,opt,name=msg_id,json=msgId" json:"msg_id,omitempty"`
-	Data  []byte `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
-}

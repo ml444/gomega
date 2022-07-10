@@ -1,9 +1,9 @@
 package brokers
 
 import (
+	"errors"
 	"fmt"
-	"github.com/ml444/scheduler/publish"
-	"github.com/ml444/scheduler/util"
+	log "github.com/ml444/glog"
 	"os"
 )
 /*
@@ -27,23 +27,45 @@ type IBackendReader interface {
 }
 
 type IBackendWriter interface {
-	Write(req *publish.PubReq, data []byte)
+	Write(item *Item)
 	SetFinish(item *Item)
 }
 
 var brokerMap map[string]*Broker
 
-func GetBrokerByTopicName(namespace, topic string) *Broker {
+func InitBroker() {
+	if brokerMap == nil {
+		brokerMap = map[string]*Broker{}
+	}
+	defaultBroker := &Broker{
+		namespace: "default",
+		topic:     "default",
+		partition: 0,
+		sequence:  0,
+		idxFile:   nil,
+		dataFile:  nil,
+		itemChan:  make(chan *Item, 1024),
+		exitChan:  make(chan bool, 1),
+	}
+	go defaultBroker.ioLoop()
+	brokerMap["default"] = defaultBroker
+}
+
+func GetBrokerByTopicName(namespace, topic string) (*Broker, error) {
 	key := fmt.Sprintf("%s:%s", namespace, topic)
 	broker, ok := brokerMap[key]
 	if !ok {
-		return nil
+		broker = brokerMap["default"]
+		if broker != nil {
+			return broker, nil
+		}
+		return nil, errors.New("not found broker")
 	}
-	return broker
+	return broker, nil
 }
 
 type Broker struct {
-	util.Report
+	namespace string
 	topic     string
 	partition int
 	sequence  uint64
@@ -62,11 +84,21 @@ func (b *Broker) getNextSequence() uint64 {
 }
 
 func (b *Broker) getIdxFile() (*os.File, error) {
-	return nil, nil
+	filename := fmt.Sprintf("%s.%s.%d.%d.idx", b.namespace, b.topic, b.partition, b.sequence)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }
 
 func (b *Broker) getDataFile() (*os.File, error) {
-	return nil, nil
+	filename := fmt.Sprintf("%s.%s.%d.%d.dat", b.namespace, b.topic, b.partition, b.sequence)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }
 func (b *Broker) Send(item *Item) error {
 	item.Sequence = b.getNextSequence()
@@ -121,23 +153,23 @@ func (b *Broker) Flush(itemList []*Item, dataSize int) {
 	}
 
 	{
-		if b.idxFile == nil {
-			b.idxFile, err = b.getDataFile()
+		if b.dataFile == nil {
+			b.dataFile, err = b.getDataFile()
 			if err != nil {
-				b.ReportError(err)
+				log.Error(err)
 				return
 			}
 		}
 		var n, m int
 		n, err = b.dataFile.Write(dataBuf)
 		if err != nil {
-			b.ReportError(err)
+			log.Error(err)
 			return
 		}
 		for n < dataBufSize {
 			m, err = b.dataFile.Write(dataBuf[n:])
 			if err != nil {
-				b.ReportError(err)
+				log.Error(err)
 				return
 			}
 			n += m
@@ -147,20 +179,20 @@ func (b *Broker) Flush(itemList []*Item, dataSize int) {
 		if b.idxFile == nil {
 			b.idxFile, err = b.getIdxFile()
 			if err != nil {
-				b.ReportError(err)
+				log.Error(err)
 				return
 			}
 		}
 		var n, m int
 		n, err = b.idxFile.Write(idxBuf)
 		if err != nil {
-			b.ReportError(err)
+			log.Error(err)
 			return
 		}
 		for n < idxBufSize {
 			m, err = b.idxFile.Write(idxBuf[n:])
 			if err != nil {
-				b.ReportError(err)
+				log.Error(err)
 				return
 			}
 			n += m

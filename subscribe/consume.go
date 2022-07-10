@@ -2,15 +2,14 @@ package subscribe
 
 import (
 	"fmt"
+	log "github.com/ml444/glog"
 	"github.com/ml444/scheduler/brokers"
-	"github.com/ml444/scheduler/util"
 	"sync"
 )
 
 const defaultConsumeConcurrentCount = 100
 
 type ConcurrentConsume struct {
-	util.Report
 	cfg        *Config
 	wg         sync.WaitGroup
 	retryList  *brokers.MinHeap
@@ -60,7 +59,7 @@ func (c *ConcurrentConsume) Start() {
 	for {
 		item, err := c.queueGroup.SequentialRead()
 		if err != nil {
-			c.ReportError(err)
+			log.Error(err)
 			continue
 		}
 		if item == nil {
@@ -89,7 +88,6 @@ func (c *ConcurrentConsume) Stop() {
 }
 
 type SerialConsume struct {
-	util.Report
 	cfg         *Config
 	wg          sync.WaitGroup
 	workerMap   map[int]*consumeWorker
@@ -165,14 +163,14 @@ func (c *SerialConsume) Start() {
 func (c *SerialConsume) specifyPartitionSend(partition int) {
 	ch, ok := c.msgChanMap[partition]
 	if !ok {
-		c.ReportError(fmt.Errorf("not found msgChan with partition %d", partition))
+		log.Error(fmt.Errorf("not found msgChan with partition %d", partition))
 		return
 	}
 	for {
 		// TODO: get queue to msg
 		item, err := c.queueGroup.SpecifyRead(partition)
 		if err != nil {
-			c.ReportError(err)
+			log.Error(err)
 			continue
 		}
 		if item == nil {

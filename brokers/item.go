@@ -108,3 +108,23 @@ func (i *Item) Marshal2Data(buf []byte) {
 	copy(buf[2:], i.Data)
 	b.PutUint16(buf[2+len(i.Data):], itemEnd)
 }
+
+
+func DecodeMsgPayload(buf []byte) (*MsgPayload, error) {
+	var p MsgPayload
+	//err := proto.Unmarshal(buf, &p)
+	//if err != nil {
+	//	log.Errorf("err:%v", err)
+	//	return nil, err
+	//}
+	return &p, nil
+}
+
+type MsgPayload struct {
+	//Ctx                  *MsgPayload_Context `protobuf:"bytes,1,opt,name=ctx" json:"ctx,omitempty"`
+	MsgId string `protobuf:"bytes,2,opt,name=msg_id,json=msgId" json:"msg_id,omitempty"`
+	Data  []byte `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
+
+	DelayType uint32
+	DelayValue uint32
+}

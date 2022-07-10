@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/ml444/glog"
-	"github.com/ml444/scheduler/util"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,7 +21,6 @@ type IQueueGroup interface {
 }
 
 type FifoQueue struct {
-	util.Report
 	Name      string
 	Partition int
 	cursor    uint64
@@ -97,7 +95,7 @@ func (q *FifoQueue) FillIndex(fillCount uint64) error {
 	if q.indexFile == nil {
 		idxFile, err := q.openIndexFile()
 		if err != nil {
-			q.ReportError(err)
+			log.Error(err)
 			return err
 		}
 		q.indexFile = idxFile
@@ -106,7 +104,7 @@ func (q *FifoQueue) FillIndex(fillCount uint64) error {
 	var buf = make([]byte, size)
 	n, err := q.indexFile.ReadAt(buf, int64(q.offset)*indexItemSize)
 	if err != nil && err != io.EOF {
-		q.ReportError(err)
+		log.Error(err)
 		return err
 	}
 	if n <= 0 {
@@ -118,12 +116,12 @@ func (q *FifoQueue) FillIndex(fillCount uint64) error {
 		var item Item
 		err = item.FillIndex(buf[begin : begin+indexItemSize])
 		if err != nil {
-			q.ReportError(err)
+			log.Error(err)
 			return err
 		}
 		err = q.Push(&item)
 		if err != nil {
-			q.ReportError(err)
+			log.Error(err)
 			return err
 		}
 	}
@@ -158,7 +156,6 @@ func (q *FifoQueue) Close() {
 }
 
 type QueueGroup struct {
-	util.Report
 	partitionNum int
 	queueMaxSize uint64
 	consumeIdx   int
@@ -185,7 +182,7 @@ func (g *QueueGroup) IoLoop() {
 				fillCount := g.queueMaxSize - (queue.offset - queue.cursor)
 				err := queue.FillIndex(fillCount)
 				if err != nil {
-					g.ReportError(err)
+					log.Error(err)
 				}
 			}
 		case <-g.closeChan:

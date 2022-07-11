@@ -2,7 +2,7 @@ package subscribe
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/golang/protobuf/proto"
 	"github.com/ml444/scheduler/subscribe/call"
 	"reflect"
 )
@@ -14,11 +14,11 @@ type Subscriber struct {
 	Addrs []string
 	Cfg   *Config
 
-	Request interface{}
-	Response interface{}
+	Request  proto.Message
+	Response proto.Message
 
 	BeforeProcess func(ctx context.Context, meta *call.MsgMeta)
-	AfterProcess func(ctx context.Context, meta *call.MsgMeta, req, rsp interface{}) (isRetry bool, ignoreRetryCount bool)
+	AfterProcess  func(ctx context.Context, meta *call.MsgMeta, req, rsp interface{}) (isRetry bool, ignoreRetryCount bool)
 }
 
 func NewSubscriber(namespace, topicName string, subCfg *Config) *Subscriber {
@@ -28,8 +28,9 @@ func NewSubscriber(namespace, topicName string, subCfg *Config) *Subscriber {
 }
 
 func (s *Subscriber) UnMarshalRequest(data []byte) (interface{}, error) {
-	var in = s.Request
-	err := json.Unmarshal(data, &in)
+	inT := reflect.TypeOf(s.Request).Elem()
+	in := reflect.New(inT).Interface().(proto.Message)
+	err := proto.Unmarshal(data, in)
 	if err != nil {
 		return nil, err
 	}
@@ -37,6 +38,6 @@ func (s *Subscriber) UnMarshalRequest(data []byte) (interface{}, error) {
 }
 
 func (s Subscriber) NewResponse() interface{} {
-	T := reflect.TypeOf(s.Response)
+	T := reflect.TypeOf(s.Response).Elem()
 	return reflect.New(T).Interface()
 }

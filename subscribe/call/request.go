@@ -45,5 +45,5 @@ func (r *Request) getConn() (*grpc.ClientConn, error) {
 }
 
 func (r *Request) getAddr(key string) (string, error) {
-	return "", nil
+	return "127.0.0.1:50051", nil
 }

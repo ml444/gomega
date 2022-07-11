@@ -18,5 +18,5 @@
 
 .idea/
 
-*_test.go
+#*_test.go
 go.sum

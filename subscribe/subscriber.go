@@ -8,11 +8,12 @@ import (
 )
 
 type Subscriber struct {
-	Name  string
-	Topic string
-	Route string
-	Addrs []string
-	Cfg   *Config
+	Namespace string
+	Name      string
+	Topic     string
+	Route     string
+	Addrs     []string
+	Cfg       *Config
 
 	Request  proto.Message
 	Response proto.Message
@@ -27,7 +28,7 @@ func NewSubscriber(namespace, topicName string, subCfg *Config) *Subscriber {
 	}
 }
 
-func (s *Subscriber) UnMarshalRequest(data []byte) (interface{}, error) {
+func (s *Subscriber) UnMarshalRequest(data []byte) (proto.Message, error) {
 	inT := reflect.TypeOf(s.Request).Elem()
 	in := reflect.New(inT).Interface().(proto.Message)
 	err := proto.Unmarshal(data, in)
@@ -37,7 +38,7 @@ func (s *Subscriber) UnMarshalRequest(data []byte) (interface{}, error) {
 	return in, nil
 }
 
-func (s Subscriber) NewResponse() interface{} {
+func (s Subscriber) NewResponse() proto.Message {
 	T := reflect.TypeOf(s.Response).Elem()
-	return reflect.New(T).Interface()
+	return reflect.New(T).Interface().(proto.Message)
 }

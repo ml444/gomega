@@ -2,6 +2,10 @@ package subscribe
 
 import "sync"
 
+var SubMgr *Manager
+func init() {
+	SubMgr = NewManager()
+}
 type Manager struct {
 	subMap map[string]*Subscriber
 	mu     sync.RWMutex

@@ -5,7 +5,7 @@ package alpha
 
 /*
 protoc -I=$SRC_DIR --go_out=$DST_DIR $SRC_DIR/omega.proto
-protoc -I=. --go_out=. omega.proto
+protoc --go_out=plugins=grpc:. omega.proto
 */
 
 import proto "github.com/golang/protobuf/proto"
@@ -43,7 +43,7 @@ func (m *PubRequest) Reset()         { *m = PubRequest{} }
 func (m *PubRequest) String() string { return proto.CompactTextString(m) }
 func (*PubRequest) ProtoMessage()    {}
 func (*PubRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_omega_08a9fb248ede2058, []int{0}
+	return fileDescriptor_omega_6063c3bf7d26a508, []int{0}
 }
 func (m *PubRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PubRequest.Unmarshal(m, b)
@@ -108,7 +108,7 @@ func (m *PubResponse) Reset()         { *m = PubResponse{} }
 func (m *PubResponse) String() string { return proto.CompactTextString(m) }
 func (*PubResponse) ProtoMessage()    {}
 func (*PubResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_omega_08a9fb248ede2058, []int{1}
+	return fileDescriptor_omega_6063c3bf7d26a508, []int{1}
 }
 func (m *PubResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PubResponse.Unmarshal(m, b)
@@ -128,9 +128,197 @@ func (m *PubResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_PubResponse proto.InternalMessageInfo
 
+type SubscribeReq struct {
+	Namespace            string                 `protobuf:"bytes,1,opt,name=namespace" json:"namespace,omitempty"`
+	Name                 string                 `protobuf:"bytes,2,opt,name=name" json:"name,omitempty"`
+	Topic                string                 `protobuf:"bytes,3,opt,name=topic" json:"topic,omitempty"`
+	Route                string                 `protobuf:"bytes,4,opt,name=route" json:"route,omitempty"`
+	Request              proto.Message  `protobuf:"bytes,5,opt,name=request" json:"request,omitempty"`
+	Response             proto.Message `protobuf:"bytes,6,opt,name=response" json:"response,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}               `json:"-" bson:"-"`
+	XXX_unrecognized     []byte                 `json:"-" bson:"-"`
+	XXX_sizecache        int32                  `json:"-" bson:"-"`
+}
+
+func (m *SubscribeReq) Reset()         { *m = SubscribeReq{} }
+func (m *SubscribeReq) String() string { return proto.CompactTextString(m) }
+func (*SubscribeReq) ProtoMessage()    {}
+func (*SubscribeReq) Descriptor() ([]byte, []int) {
+	return fileDescriptor_omega_6063c3bf7d26a508, []int{2}
+}
+func (m *SubscribeReq) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_SubscribeReq.Unmarshal(m, b)
+}
+func (m *SubscribeReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_SubscribeReq.Marshal(b, m, deterministic)
+}
+func (dst *SubscribeReq) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SubscribeReq.Merge(dst, src)
+}
+func (m *SubscribeReq) XXX_Size() int {
+	return xxx_messageInfo_SubscribeReq.Size(m)
+}
+func (m *SubscribeReq) XXX_DiscardUnknown() {
+	xxx_messageInfo_SubscribeReq.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SubscribeReq proto.InternalMessageInfo
+
+func (m *SubscribeReq) GetNamespace() string {
+	if m != nil {
+		return m.Namespace
+	}
+	return ""
+}
+
+func (m *SubscribeReq) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *SubscribeReq) GetTopic() string {
+	if m != nil {
+		return m.Topic
+	}
+	return ""
+}
+
+func (m *SubscribeReq) GetRoute() string {
+	if m != nil {
+		return m.Route
+	}
+	return ""
+}
+
+func (m *SubscribeReq) GetRequest() proto.Message {
+	if m != nil {
+		return m.Request
+	}
+	return nil
+}
+
+func (m *SubscribeReq) GetResponse() proto.Message {
+	if m != nil {
+		return m.Response
+	}
+	return nil
+}
+
+type SubscribeReq_Request struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-" bson:"-"`
+	XXX_unrecognized     []byte   `json:"-" bson:"-"`
+	XXX_sizecache        int32    `json:"-" bson:"-"`
+}
+
+func (m *SubscribeReq_Request) Reset()         { *m = SubscribeReq_Request{} }
+func (m *SubscribeReq_Request) String() string { return proto.CompactTextString(m) }
+func (*SubscribeReq_Request) ProtoMessage()    {}
+func (*SubscribeReq_Request) Descriptor() ([]byte, []int) {
+	return fileDescriptor_omega_6063c3bf7d26a508, []int{2, 0}
+}
+func (m *SubscribeReq_Request) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_SubscribeReq_Request.Unmarshal(m, b)
+}
+func (m *SubscribeReq_Request) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_SubscribeReq_Request.Marshal(b, m, deterministic)
+}
+func (dst *SubscribeReq_Request) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SubscribeReq_Request.Merge(dst, src)
+}
+func (m *SubscribeReq_Request) XXX_Size() int {
+	return xxx_messageInfo_SubscribeReq_Request.Size(m)
+}
+func (m *SubscribeReq_Request) XXX_DiscardUnknown() {
+	xxx_messageInfo_SubscribeReq_Request.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SubscribeReq_Request proto.InternalMessageInfo
+
+type SubscribeReq_Response struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-" bson:"-"`
+	XXX_unrecognized     []byte   `json:"-" bson:"-"`
+	XXX_sizecache        int32    `json:"-" bson:"-"`
+}
+
+func (m *SubscribeReq_Response) Reset()         { *m = SubscribeReq_Response{} }
+func (m *SubscribeReq_Response) String() string { return proto.CompactTextString(m) }
+func (*SubscribeReq_Response) ProtoMessage()    {}
+func (*SubscribeReq_Response) Descriptor() ([]byte, []int) {
+	return fileDescriptor_omega_6063c3bf7d26a508, []int{2, 1}
+}
+func (m *SubscribeReq_Response) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_SubscribeReq_Response.Unmarshal(m, b)
+}
+func (m *SubscribeReq_Response) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_SubscribeReq_Response.Marshal(b, m, deterministic)
+}
+func (dst *SubscribeReq_Response) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SubscribeReq_Response.Merge(dst, src)
+}
+func (m *SubscribeReq_Response) XXX_Size() int {
+	return xxx_messageInfo_SubscribeReq_Response.Size(m)
+}
+func (m *SubscribeReq_Response) XXX_DiscardUnknown() {
+	xxx_messageInfo_SubscribeReq_Response.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SubscribeReq_Response proto.InternalMessageInfo
+
+type SubscribeRsp struct {
+	Status               int32    `protobuf:"zigzag32,1,opt,name=status" json:"status,omitempty"`
+	Message              string   `protobuf:"bytes,2,opt,name=message" json:"message,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-" bson:"-"`
+	XXX_unrecognized     []byte   `json:"-" bson:"-"`
+	XXX_sizecache        int32    `json:"-" bson:"-"`
+}
+
+func (m *SubscribeRsp) Reset()         { *m = SubscribeRsp{} }
+func (m *SubscribeRsp) String() string { return proto.CompactTextString(m) }
+func (*SubscribeRsp) ProtoMessage()    {}
+func (*SubscribeRsp) Descriptor() ([]byte, []int) {
+	return fileDescriptor_omega_6063c3bf7d26a508, []int{3}
+}
+func (m *SubscribeRsp) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_SubscribeRsp.Unmarshal(m, b)
+}
+func (m *SubscribeRsp) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_SubscribeRsp.Marshal(b, m, deterministic)
+}
+func (dst *SubscribeRsp) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SubscribeRsp.Merge(dst, src)
+}
+func (m *SubscribeRsp) XXX_Size() int {
+	return xxx_messageInfo_SubscribeRsp.Size(m)
+}
+func (m *SubscribeRsp) XXX_DiscardUnknown() {
+	xxx_messageInfo_SubscribeRsp.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SubscribeRsp proto.InternalMessageInfo
+
+func (m *SubscribeRsp) GetStatus() int32 {
+	if m != nil {
+		return m.Status
+	}
+	return 0
+}
+
+func (m *SubscribeRsp) GetMessage() string {
+	if m != nil {
+		return m.Message
+	}
+	return ""
+}
+
 func init() {
 	proto.RegisterType((*PubRequest)(nil), "omega.PubRequest")
 	proto.RegisterType((*PubResponse)(nil), "omega.PubResponse")
+	proto.RegisterType((*SubscribeReq)(nil), "omega.SubscribeReq")
+	proto.RegisterType((*SubscribeReq_Request)(nil), "omega.SubscribeReq.Request")
+	proto.RegisterType((*SubscribeReq_Response)(nil), "omega.SubscribeReq.Response")
+	proto.RegisterType((*SubscribeRsp)(nil), "omega.SubscribeRsp")
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -146,6 +334,7 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type OmegaServiceClient interface {
 	Pub(ctx context.Context, in *PubRequest, opts ...grpc.CallOption) (*PubResponse, error)
+	Subscribe(ctx context.Context, in *SubscribeReq, opts ...grpc.CallOption) (*SubscribeRsp, error)
 }
 
 type omegaServiceClient struct {
@@ -165,9 +354,19 @@ func (c *omegaServiceClient) Pub(ctx context.Context, in *PubRequest, opts ...gr
 	return out, nil
 }
 
+func (c *omegaServiceClient) Subscribe(ctx context.Context, in *SubscribeReq, opts ...grpc.CallOption) (*SubscribeRsp, error) {
+	out := new(SubscribeRsp)
+	err := c.cc.Invoke(ctx, "/omega.OmegaService/Subscribe", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OmegaServiceServer is the server API for OmegaService service.
 type OmegaServiceServer interface {
 	Pub(context.Context, *PubRequest) (*PubResponse, error)
+	Subscribe(context.Context, *SubscribeReq) (*SubscribeRsp, error)
 }
 
 func RegisterOmegaServiceServer(s *grpc.Server, srv OmegaServiceServer) {
@@ -192,6 +391,24 @@ func _OmegaService_Pub_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OmegaService_Subscribe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubscribeReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OmegaServiceServer).Subscribe(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/omega.OmegaService/Subscribe",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OmegaServiceServer).Subscribe(ctx, req.(*SubscribeReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _OmegaService_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "omega.OmegaService",
 	HandlerType: (*OmegaServiceServer)(nil),
@@ -200,27 +417,39 @@ var _OmegaService_serviceDesc = grpc.ServiceDesc{
 			MethodName: "Pub",
 			Handler:    _OmegaService_Pub_Handler,
 		},
+		{
+			MethodName: "Subscribe",
+			Handler:    _OmegaService_Subscribe_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "omega.proto",
 }
 
-func init() { proto.RegisterFile("omega.proto", fileDescriptor_omega_08a9fb248ede2058) }
+func init() { proto.RegisterFile("omega.proto", fileDescriptor_omega_6063c3bf7d26a508) }
 
-var fileDescriptor_omega_08a9fb248ede2058 = []byte{
-	// 210 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x4c, 0xcf, 0x3d, 0x4e, 0xc4, 0x30,
-	0x10, 0x05, 0x60, 0xcc, 0x66, 0x11, 0x99, 0xdd, 0x2d, 0x98, 0xca, 0xe2, 0x47, 0x8a, 0x52, 0xa5,
-	0x4a, 0x01, 0x3d, 0x0d, 0x3d, 0xac, 0xcc, 0x01, 0x56, 0x13, 0x67, 0x44, 0x5c, 0x24, 0x63, 0x62,
-	0x87, 0xb3, 0x70, 0x5c, 0x64, 0xa7, 0x08, 0x9d, 0xfd, 0x8d, 0x9e, 0xf4, 0x1e, 0x1c, 0x64, 0xe4,
-	0x2f, 0x6a, 0xfd, 0x2c, 0x51, 0x70, 0x9f, 0x3f, 0xf5, 0xaf, 0x02, 0x38, 0x2f, 0x9d, 0xe1, 0xef,
-	0x85, 0x43, 0xc4, 0x47, 0x28, 0x27, 0x1a, 0x39, 0x78, 0xb2, 0xac, 0x55, 0xa5, 0x9a, 0xd2, 0x6c,
-	0x80, 0x4f, 0x00, 0x51, 0xbc, 0xb3, 0x97, 0x44, 0xfa, 0x7a, 0x3d, 0x67, 0x79, 0xa7, 0x91, 0x53,
-	0xd8, 0xd3, 0x1c, 0x5d, 0x74, 0x32, 0xe9, 0x5d, 0xa5, 0x9a, 0x93, 0xd9, 0x00, 0x1f, 0xa0, 0x1c,
-	0x28, 0x0c, 0x17, 0x2b, 0x3d, 0xeb, 0xa2, 0x52, 0x4d, 0x61, 0x6e, 0x13, 0xbc, 0x49, 0xcf, 0x88,
-	0x50, 0xf4, 0x14, 0x49, 0xef, 0x2b, 0xd5, 0x1c, 0x4d, 0x7e, 0xd7, 0x27, 0x38, 0xe4, 0x66, 0xc1,
-	0xcb, 0x14, 0xf8, 0xf9, 0x15, 0x8e, 0x1f, 0xa9, 0xf2, 0x27, 0xcf, 0x3f, 0xce, 0x32, 0xb6, 0xb0,
-	0x3b, 0x2f, 0x1d, 0xde, 0xb5, 0xeb, 0xaa, 0x6d, 0xc4, 0x3d, 0xfe, 0xa7, 0x35, 0x5d, 0x5f, 0x75,
-	0x37, 0x79, 0xf7, 0xcb, 0x5f, 0x00, 0x00, 0x00, 0xff, 0xff, 0x24, 0xeb, 0x4c, 0x30, 0x06, 0x01,
-	0x00, 0x00,
+var fileDescriptor_omega_6063c3bf7d26a508 = []byte{
+	// 346 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x92, 0xcd, 0x6e, 0xea, 0x30,
+	0x10, 0x85, 0xc9, 0x25, 0xfc, 0x64, 0x80, 0x05, 0x73, 0xaf, 0xae, 0xa2, 0x40, 0xa5, 0x28, 0xab,
+	0xac, 0xb2, 0xa0, 0xaa, 0xda, 0x65, 0xa5, 0xee, 0x5b, 0x64, 0x1e, 0x00, 0x39, 0x61, 0x04, 0x59,
+	0x04, 0x1b, 0xdb, 0x69, 0x5f, 0xa5, 0x0f, 0xda, 0x07, 0xa8, 0x62, 0x07, 0x88, 0x54, 0xa4, 0xee,
+	0xe6, 0x9c, 0xcc, 0xc4, 0xdf, 0x19, 0x1b, 0x26, 0xa2, 0xa2, 0x3d, 0xcf, 0xa4, 0x12, 0x46, 0xe0,
+	0xc0, 0x8a, 0xe4, 0xd3, 0x03, 0x58, 0xd7, 0x39, 0xa3, 0x53, 0x4d, 0xda, 0xe0, 0x12, 0x82, 0x23,
+	0xaf, 0x48, 0x4b, 0x5e, 0x50, 0xe8, 0xc5, 0x5e, 0x1a, 0xb0, 0xab, 0x81, 0x77, 0x00, 0x46, 0xc8,
+	0xb2, 0xd8, 0x36, 0x56, 0xf8, 0xc7, 0x7d, 0xb6, 0xce, 0x2b, 0xaf, 0xa8, 0x19, 0x96, 0x5c, 0x99,
+	0xd2, 0x94, 0xe2, 0x18, 0xf6, 0x63, 0x2f, 0x9d, 0xb1, 0xab, 0x81, 0x0b, 0x08, 0x0e, 0x5c, 0x1f,
+	0xb6, 0x85, 0xd8, 0x51, 0xe8, 0xc7, 0x5e, 0xea, 0xb3, 0x71, 0x63, 0xbc, 0x88, 0x1d, 0x21, 0x82,
+	0xbf, 0xe3, 0x86, 0x87, 0x83, 0xd8, 0x4b, 0xa7, 0xcc, 0xd6, 0xc9, 0x0c, 0x26, 0x96, 0x4c, 0x4b,
+	0x71, 0xd4, 0x94, 0x7c, 0x79, 0x30, 0xdd, 0xd4, 0xb9, 0x2e, 0x54, 0x99, 0x13, 0xa3, 0xd3, 0x2f,
+	0xac, 0x08, 0x7e, 0x87, 0xd2, 0xd6, 0xf8, 0x0f, 0x06, 0x96, 0xd6, 0xc2, 0x05, 0xcc, 0x89, 0xc6,
+	0x55, 0xa2, 0x36, 0x0e, 0x2a, 0x60, 0x4e, 0xe0, 0x03, 0x8c, 0x94, 0x5b, 0x8a, 0x85, 0x9a, 0xac,
+	0x16, 0x99, 0x5b, 0x5f, 0x97, 0x21, 0x6b, 0xf7, 0xc6, 0xce, 0xbd, 0xf8, 0x04, 0x63, 0xd5, 0x12,
+	0x87, 0x43, 0x3b, 0xb7, 0xbc, 0x3d, 0xe7, 0x7a, 0xd8, 0xa5, 0x3b, 0x0a, 0x60, 0xd4, 0xfe, 0x2d,
+	0x02, 0x18, 0x5f, 0x62, 0x3f, 0x77, 0x53, 0x6b, 0x89, 0xff, 0x61, 0xa8, 0x0d, 0x37, 0xb5, 0xb6,
+	0x91, 0xe7, 0xac, 0x55, 0x18, 0xc2, 0xa8, 0x22, 0xad, 0xf9, 0xfe, 0x1c, 0xf9, 0x2c, 0x57, 0x1f,
+	0x30, 0x7d, 0x6b, 0x08, 0x36, 0xa4, 0xde, 0xcb, 0x82, 0x30, 0x83, 0xfe, 0xba, 0xce, 0x71, 0xde,
+	0x72, 0x5d, 0x6f, 0x3f, 0xc2, 0xae, 0xd5, 0x9e, 0xdf, 0xc3, 0x47, 0x08, 0x2e, 0x04, 0xf8, 0xf7,
+	0x46, 0x9a, 0xe8, 0xa7, 0xa9, 0x65, 0xd2, 0xcb, 0x87, 0xf6, 0xa5, 0xdd, 0x7f, 0x07, 0x00, 0x00,
+	0xff, 0xff, 0x7b, 0x13, 0xc0, 0xf5, 0x78, 0x02, 0x00, 0x00,
 }

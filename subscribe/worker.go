@@ -15,7 +15,7 @@ const (
 	WorkerTypeAsync      = 3
 )
 
-type consumeWorker struct {
+type Worker struct {
 	typ        int8
 	wg         *sync.WaitGroup
 	idx        int
@@ -24,11 +24,11 @@ type consumeWorker struct {
 	finishChan chan *brokers.Item
 	retryList  *brokers.MinHeap
 	tk         *time.Ticker
-	cfg        *Config
+	Cfg        *Config
 	//futureList *structure.Tree // async
 	blockLimit int
 
-	subscriber *Subscriber
+	S *Subscriber
 }
 
 const defaultTimeout = time.Millisecond * 10
@@ -38,8 +38,8 @@ const (
 	defaultConsumeMaxRetryCount      = 5
 )
 
-func NewConsumeWorker(wg *sync.WaitGroup, idx int, msgChan chan *brokers.Item, finishChan chan *brokers.Item) *consumeWorker {
-	return &consumeWorker{
+func NewConsumeWorker(wg *sync.WaitGroup, idx int, msgChan chan *brokers.Item, finishChan chan *brokers.Item) *Worker {
+	return &Worker{
 		wg:         wg,
 		idx:        idx,
 		exitChan:   make(chan int, 1),
@@ -49,13 +49,13 @@ func NewConsumeWorker(wg *sync.WaitGroup, idx int, msgChan chan *brokers.Item, f
 		tk:         time.NewTicker(defaultTimeout),
 	}
 }
-func (w *consumeWorker) notifyExit() {
+func (w *Worker) notifyExit() {
 	select {
 	case w.exitChan <- 1:
 	default:
 	}
 }
-func (w *consumeWorker) NextMsg(exit *bool) *brokers.Item {
+func (w *Worker) NextMsg(exit *bool) *brokers.Item {
 
 	select {
 	case msg := <-w.msgChan:
@@ -69,7 +69,7 @@ func (w *consumeWorker) NextMsg(exit *bool) *brokers.Item {
 	}
 }
 
-func (w *consumeWorker) tryRetryMsg() *brokers.Item {
+func (w *Worker) tryRetryMsg() *brokers.Item {
 	top := w.retryList.PeekEl()
 	now := time.Now().UnixMilli()
 	if top.Priority <= now {
@@ -78,19 +78,19 @@ func (w *consumeWorker) tryRetryMsg() *brokers.Item {
 	return nil
 }
 
-func (w *consumeWorker) setFinish(msg *brokers.Item) {
+func (w *Worker) setFinish(msg *brokers.Item) {
 	w.finishChan <- msg
 }
-func (w *consumeWorker) Run() {
+func (w *Worker) Run() {
 	defer w.wg.Done()
 
-	cfg := w.cfg
+	cfg := w.Cfg
 	if cfg == nil {
-		panic("cfg is nil")
+		panic("Cfg is nil")
 	}
 
 	if cfg.ServicePath == "" || cfg.ServiceName == "" {
-		panic("cfg hasn't config ServicePath or ServiceName")
+		panic("Cfg hasn't config ServicePath or ServiceName")
 	}
 	for {
 		var exit bool
@@ -117,7 +117,7 @@ func (w *consumeWorker) Run() {
 			continue
 		}
 		var consumeRsp call.ConsumeRsp
-		_ = w.consumeMsg(msg, payload, &consumeRsp)
+		_ = w.ConsumeMsg(msg, payload, &consumeRsp)
 		if consumeRsp.Retry {
 			maxRetryCount := w.getMaxRetryCount()
 			if msg.RetryCount >= maxRetryCount {
@@ -146,11 +146,11 @@ func (w *consumeWorker) Run() {
 //	nextExecAt int64
 //}
 
-func (w *consumeWorker) consumeMsg(item *brokers.Item, payload *brokers.MsgPayload, consumeRsp *call.ConsumeRsp) error {
+func (w *Worker) ConsumeMsg(item *brokers.Item, payload *brokers.MsgPayload, consumeRsp *call.ConsumeRsp) error {
 	// TODO getRoute(checkRoute())
 	ctx := context.TODO()
-	s := w.subscriber
-	var timeoutSeconds = w.cfg.MaxExecTimeSeconds
+	s := w.S
+	var timeoutSeconds = w.Cfg.MaxExecTimeSeconds
 	if timeoutSeconds == 0 {
 		timeoutSeconds = defaultConsumeMaxExecTimeSeconds
 	}
@@ -169,7 +169,7 @@ func (w *consumeWorker) consumeMsg(item *brokers.Item, payload *brokers.MsgPaylo
 		return err
 	}
 	out := s.NewResponse()
-	err = call.Call(ctx, w.subscriber.Route, &in, &out, timeoutSeconds)
+	err = call.Call(ctx, w.S.Route, &in, &out, timeoutSeconds)
 	if err != nil {
 		log.Error(err)
 		consumeRsp.Retry = true
@@ -190,8 +190,8 @@ func (w *consumeWorker) consumeMsg(item *brokers.Item, payload *brokers.MsgPaylo
 	return nil
 }
 
-func (w *consumeWorker) getMaxRetryCount() uint32 {
-	s := w.cfg
+func (w *Worker) getMaxRetryCount() uint32 {
+	s := w.Cfg
 	maxRetryCount := uint32(defaultConsumeMaxRetryCount)
 	if s != nil && s.MaxRetryCount > 0 {
 		maxRetryCount = s.MaxRetryCount
@@ -199,8 +199,8 @@ func (w *consumeWorker) getMaxRetryCount() uint32 {
 	return maxRetryCount
 }
 
-func (w *consumeWorker) getNextRetryWait(retryCnt uint32) int64 {
-	s := w.cfg
+func (w *Worker) getNextRetryWait(retryCnt uint32) int64 {
+	s := w.Cfg
 	retryMs := s.RetryIntervalMs
 	if s != nil && retryMs > 0 {
 		if s.RetryIntervalStep > 0 {

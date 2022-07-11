@@ -13,7 +13,7 @@ type ConcurrentConsume struct {
 	cfg        *Config
 	wg         sync.WaitGroup
 	retryList  *brokers.MinHeap
-	workers    []*consumeWorker
+	workers    []*Worker
 	msgChan    chan *brokers.Item
 	finishChan chan *brokers.Item
 	writer     brokers.IBackendWriter
@@ -90,7 +90,7 @@ func (c *ConcurrentConsume) Stop() {
 type SerialConsume struct {
 	cfg         *Config
 	wg          sync.WaitGroup
-	workerMap   map[int]*consumeWorker
+	workerMap   map[int]*Worker
 	heapMap     map[int]*brokers.MinHeap
 	msgChanMap  map[int]chan *brokers.Item
 	finishChan  chan *brokers.Item
@@ -116,14 +116,14 @@ func NewSerialConsume(cfg *Config) *SerialConsume {
 
 func (c *SerialConsume) init() {
 	if c.cfg == nil {
-		panic("cfg is nil")
+		panic("Cfg is nil")
 	}
 	if c.cfg.ConcurrentCount == 0 {
 		c.workerCount = defaultConsumeConcurrentCount
 	} else {
 		c.workerCount = c.cfg.ConcurrentCount
 	}
-	c.workerMap = map[int]*consumeWorker{}
+	c.workerMap = map[int]*Worker{}
 	c.msgChanMap = map[int]chan *brokers.Item{}
 	c.finishChan = make(chan *brokers.Item, 1024)
 }

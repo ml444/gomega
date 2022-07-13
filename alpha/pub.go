@@ -7,7 +7,8 @@ import (
 )
 
 var conn *grpc.ClientConn
-var cli OmegaServiceClient
+
+//var cli OmegaServiceClient
 
 func Init() {
 	var err error
@@ -18,7 +19,7 @@ func Init() {
 		return
 	}
 	//defer conn.Close()
-	cli = NewOmegaServiceClient(conn)
+	//cli = NewOmegaServiceClient(conn)
 
 }
 func Pub(ctx context.Context, req *PubRequest) (*PubResponse, error) {

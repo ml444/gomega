@@ -3,9 +3,11 @@ package subscribe
 import "sync"
 
 var SubMgr *Manager
+
 func init() {
 	SubMgr = NewManager()
 }
+
 type Manager struct {
 	subMap map[string]*Subscriber
 	mu     sync.RWMutex
@@ -34,5 +36,5 @@ func (m *Manager) SetSubscriber(sub *Subscriber) {
 	if m.subMap == nil {
 		m.subMap = map[string]*Subscriber{}
 	}
-	m.subMap[sub.Name] = sub
+	m.subMap[sub.Id] = sub
 }

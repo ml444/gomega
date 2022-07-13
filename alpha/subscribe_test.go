@@ -46,7 +46,7 @@ import (
 //	unknownFields protoimpl.UnknownFields
 //
 //	// The name of the feature.
-//	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+//	Id string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 //	// The point where the feature is detected.
 //	Location *Point `protobuf:"bytes,2,opt,name=location,proto3" json:"location,omitempty"`
 //}
@@ -83,16 +83,16 @@ func TestSubscribe(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "",
-			args:    args{
+			name: "",
+			args: args{
 				ctx: context.TODO(),
 				req: &SubscribeReq{
-					Namespace:            "",
-					Name:                 "",
-					Topic:                "",
-					Route:                "routeguide.RouteGuide/GetFeature",
-					Request:              &Point{},
-					Response:             &Feature{},
+					Namespace: "",
+					Name:      "",
+					Topic:     "",
+					Route:     "/routeguide.RouteGuide/GetFeature",
+					Request:   &Point{},
+					Response:  &Feature{},
 				},
 			},
 			want:    nil,

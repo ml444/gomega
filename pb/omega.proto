@@ -1,0 +1,60 @@
+syntax = "proto3";
+// protoc -I=$SRC_DIR --go_out=$DST_DIR $SRC_DIR/omega.proto
+// protoc --go_out=plugins=grpc:. omega.proto
+// protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative omega.proto
+option go_package = "github.com/ml444/scheduler/pb/pb";
+
+package omega;
+
+//import "google/protobuf/any.proto";
+
+service OmegaService {
+  rpc Pub(PubReq) returns (PubRsp) {}
+  rpc Sub(SubReq) returns (SubRsp) {}
+  rpc Consume(stream ConsumeReq) returns (stream ConsumeRsp) {}
+}
+
+message PubReq {
+  string namespace = 1;
+  string topic_name = 2;
+  uint32 partition = 3;
+  uint64 hash_code = 4;
+  bytes data = 5;
+}
+
+message PubRsp {
+  sint32 status = 1;
+  string message = 2;
+}
+// strategy
+message SubReq {
+  enum Policy {
+    PolicyConcurrence = 0;
+    PolicySerial = 1;
+  }
+  string client_id = 1;
+  string namespace = 2;
+  string topic = 3;
+  uint32 partition = 4;
+  uint64 sequence = 5;
+}
+
+message SubRsp {
+  sint32 status = 1;
+  string token = 2;
+}
+
+message ConsumeReq {
+  string token = 1;
+  uint64 sequence = 2;
+  bool is_retry = 3;
+  bool ignore_retry_count = 4;
+  sint64 retry_interval_ms = 5;
+}
+
+message ConsumeRsp {
+  uint32 partition = 2;
+  uint64 sequence = 3;
+  bytes data = 4;
+  uint32 retry_count = 5;
+}

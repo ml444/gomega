@@ -4,6 +4,7 @@ import (
 	"context"
 	log "github.com/ml444/glog"
 	"github.com/ml444/scheduler/brokers"
+	"github.com/ml444/scheduler/pb"
 	"github.com/ml444/scheduler/subscribe/call"
 	"sync"
 	"time"
@@ -81,18 +82,42 @@ func (w *Worker) tryRetryMsg() *brokers.Item {
 func (w *Worker) setFinish(msg *brokers.Item) {
 	w.finishChan <- msg
 }
-func (w *Worker) Run() {
+func (w *Worker) Run(stream pb.OmegaService_ConsumeServer) error {
 	defer w.wg.Done()
 
 	cfg := w.Cfg
 	if cfg == nil {
 		panic("Cfg is nil")
 	}
-
-	if cfg.ServicePath == "" || cfg.ServiceName == "" {
-		panic("Cfg hasn't config ServicePath or ServiceName")
-	}
+	var prvItem *brokers.Item
 	for {
+		var err error
+		var req pb.ConsumeReq
+		err = stream.RecvMsg(&req)
+		if err != nil {
+			return err
+		}
+
+		if req.IsRetry && prvItem.Sequence == req.Sequence {
+			maxRetryCount := w.getMaxRetryCount()
+			if prvItem.RetryCount >= maxRetryCount {
+				w.setFinish(prvItem)
+			} else {
+				var waitMs int64
+				if req.RetryIntervalMs > 0 {
+					waitMs = req.RetryIntervalMs
+				} else {
+					waitMs = w.getNextRetryWait(prvItem.RetryCount) * 1000
+				}
+				execAt := time.Now().UnixMilli() + waitMs
+				w.retryList.PushEl(&brokers.MinHeapElement{
+					Value:    prvItem,
+					Priority: execAt,
+				})
+			}
+		} else {
+			w.setFinish(prvItem)
+		}
 		var exit bool
 		var msg *brokers.Item
 		var blockCount int
@@ -109,36 +134,22 @@ func (w *Worker) Run() {
 		if msg == nil {
 			continue
 		}
-		// TODO Skip blackList msg
-		payload, err := brokers.DecodeMsgPayload(msg.Data)
+		err = stream.Send(&pb.ConsumeRsp{
+			Partition:  msg.Partition,
+			Sequence:   msg.Sequence,
+			Data:       msg.Data,
+			RetryCount: msg.RetryCount,
+		})
 		if err != nil {
-			// TODO report err
-			w.setFinish(msg)
-			continue
+			return err
 		}
-		var consumeRsp call.ConsumeRsp
-		_ = w.ConsumeMsg(msg, payload, &consumeRsp)
-		if consumeRsp.Retry {
-			maxRetryCount := w.getMaxRetryCount()
-			if msg.RetryCount >= maxRetryCount {
-				w.setFinish(msg)
-			} else {
-				var waitMs int64
-				if consumeRsp.RetryIntervalMs > 0 {
-					waitMs = consumeRsp.RetryIntervalMs
-				} else {
-					waitMs = w.getNextRetryWait(msg.RetryCount) * 1000
-				}
-				execAt := time.Now().UnixMilli() + waitMs
-				w.retryList.PushEl(&brokers.MinHeapElement{
-					Value:    msg,
-					Priority: execAt,
-				})
-			}
-		} else {
-			w.setFinish(msg)
-		}
+		prvItem = msg
+		// TODO Skip blackList msg
+		//var consumeRsp call.ConsumeRsp
+		//_ = w.ConsumeMsg(msg, payload, &consumeRsp)
+
 	}
+	return nil
 }
 
 //type retryItem struct {
@@ -155,10 +166,10 @@ func (w *Worker) ConsumeMsg(item *brokers.Item, payload *brokers.MsgPayload, con
 		timeoutSeconds = defaultConsumeMaxExecTimeSeconds
 	}
 	meta := &call.MsgMeta{
-		CreatedAt:   item.CreatedAt,
-		RetryCnt:    item.RetryCount,
-		Data:        payload.Data,
-		MsgId:       payload.MsgId,
+		CreatedAt: item.CreatedAt,
+		RetryCnt:  item.RetryCount,
+		Data:      payload.Data,
+		MsgId:     payload.MsgId,
 	}
 	if s.BeforeProcess != nil {
 		s.BeforeProcess(ctx, meta)
@@ -213,6 +224,3 @@ func (w *Worker) getNextRetryWait(retryCnt uint32) int64 {
 	}
 	return int64(retryCnt) * 5
 }
-
-
-

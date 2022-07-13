@@ -45,7 +45,7 @@ func (c *ConcurrentConsume) Start() {
 		w := NewConsumeWorker(&c.wg, i, c.msgChan, c.finishChan)
 		c.workers = append(c.workers, w)
 		c.wg.Add(1)
-		go w.Run()
+		//go w.Run()
 	}
 	if c.retryList.Len() > 0 {
 		for {
@@ -143,7 +143,7 @@ func (c *SerialConsume) Start() {
 		w := NewConsumeWorker(&c.wg, i, ch, c.finishChan)
 		c.workerMap[i] = w
 		c.wg.Add(1)
-		go w.Run()
+		//go w.Run()
 	}
 
 	if len(c.retryList) > 0 {

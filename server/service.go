@@ -45,18 +45,26 @@ func (s *OmegaServer) Pub(ctx context.Context, req *pb.PubReq) (*pb.PubRsp, erro
 	return &rsp, nil
 }
 
-func (s *OmegaServer) Subscribe(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, error) {
+func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, error) {
 	var rsp pb.SubRsp
 	fmt.Println("====> Subscribe", req.ClientId, "===")
 	sub := subscribe.Subscriber{
-		Namespace: req.Namespace,
-		Id:        req.ClientId,
-		Topic:     req.Topic,
-		Cfg:       nil,
+		Type:                req.Policy,
+		Namespace:           req.Namespace,
+		Topic:               req.Topic,
+		GroupName:           req.Group,
+		MaxRetryCount:       req.MaxRetryCount,
+		MaxTimeout:          req.MaxTimeout,
+		RetryIntervalMs:     req.RetryIntervalMs,
+		ItemLifetimeInQueue: req.ItemLifetimeIn_Queue,
 	}
-	subscribe.SubMgr.SetSubscriber(&sub)
+	sub.Init()
+	mgr := subscribe.SubMgr
+	if old := mgr.GetSubscriber(sub.Id); old == nil {
+		mgr.AddSubscriber(&sub)
+	}
 	rsp.Status = 10000
-	rsp.Token = sub.GetToken(req.Partition)
+	rsp.Token = sub.GetToken()
 	//{
 	//	// test
 	//	item := &brokers.Item{

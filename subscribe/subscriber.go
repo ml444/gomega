@@ -1,28 +1,47 @@
 package subscribe
 
+import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"github.com/ml444/scheduler/pb"
+)
+
 type Subscriber struct {
-	Id        string
-	Namespace string
-	Topic     string
-	//Route     string
-	//Addrs     []string
-	Cfg *Config
+	IGroup
+	Type                pb.Policy
+	//Version             string
+	Id                  string
+	Namespace           string
+	Topic               string
+	GroupName           string
+	MaxRetryCount       uint32
+	MaxTimeout          uint32
+	//SerialCount         uint32
+	RetryIntervalMs     uint32
+	ItemLifetimeInQueue uint32
+	//Cfg   *Config
 
-	//Request  proto.Message
-	//Response proto.Message
-	//
-	//BeforeProcess func(ctx context.Context, meta *call.MsgMeta)
-	//AfterProcess  func(ctx context.Context, meta *call.MsgMeta, req, rsp interface{}) (isRetry bool, ignoreRetryCount bool)
 }
 
-func NewSubscriber(namespace, topicName string, subCfg *Config) *Subscriber {
-	return &Subscriber{
-		Cfg: subCfg,
-	}
+func (s *Subscriber) Init() {
+	s.Id = s.GenerateId()
+	s.IGroup = GetGroup(s.Type)
 }
 
-func (s *Subscriber) GetToken(partition uint32) string {
+func (s *Subscriber) GetToken() string {
+	// TODO
 	return "token"
+}
+
+func (s *Subscriber) GenerateId() string {
+	str := fmt.Sprintf("%d:%s:%s:%s:%d:%d:%d:%d",
+		s.Type, s.Namespace, s.Topic, s.GroupName,
+		s.MaxRetryCount, s.MaxTimeout,
+		s.RetryIntervalMs, s.ItemLifetimeInQueue)
+	h := md5.New()
+	h.Write([]byte(str))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 //func (s *Subscriber) UnMarshalRequest(data []byte) (proto.Message, error) {

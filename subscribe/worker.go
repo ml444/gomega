@@ -15,15 +15,14 @@ const (
 )
 
 type Worker struct {
-	typ        int8
+	name       string
 	wg         *sync.WaitGroup
-	idx        int
 	exitChan   chan int
 	msgChan    chan *brokers.Item
 	finishChan chan *brokers.Item
 	retryList  *brokers.MinHeap
 	tk         *time.Ticker
-	Cfg        *Config
+	//Cfg        *Config
 	//futureList *structure.Tree // async
 	blockLimit int
 
@@ -37,16 +36,21 @@ const (
 	defaultConsumeMaxRetryCount      = 5
 )
 
-func NewConsumeWorker(wg *sync.WaitGroup, idx int, msgChan chan *brokers.Item, finishChan chan *brokers.Item) *Worker {
+func NewConsumeWorker(name string,  wg *sync.WaitGroup, msgChan chan *brokers.Item, finishChan chan *brokers.Item) *Worker {
 	return &Worker{
+		name:       name,
 		wg:         wg,
-		idx:        idx,
 		exitChan:   make(chan int, 1),
 		msgChan:    msgChan,
 		finishChan: finishChan,
 		retryList:  brokers.NewMinHeap(),
 		tk:         time.NewTicker(defaultTimeout),
 	}
+}
+func (w *Worker) Init() {
+	w.exitChan = make(chan int, 1)
+	w.retryList = brokers.NewMinHeap()
+	w.tk = time.NewTicker(defaultTimeout)
 }
 func (w *Worker) notifyExit() {
 	select {
@@ -83,10 +87,6 @@ func (w *Worker) setFinish(msg *brokers.Item) {
 func (w *Worker) Run(stream pb.OmegaService_ConsumeServer) error {
 	defer w.wg.Done()
 
-	cfg := w.Cfg
-	if cfg == nil {
-		panic("Cfg is nil")
-	}
 	var prvItem *brokers.Item
 	for {
 		var err error
@@ -99,7 +99,7 @@ func (w *Worker) Run(stream pb.OmegaService_ConsumeServer) error {
 			return err
 		}
 
-		if req.IsRetry && prvItem.Sequence+1 == req.Sequence {
+		if req.IsRetry && prvItem != nil && prvItem.Sequence+1 == req.Sequence {
 			maxRetryCount := w.getMaxRetryCount()
 			if prvItem.RetryCount >= maxRetryCount {
 				w.setFinish(prvItem)

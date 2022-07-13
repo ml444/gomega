@@ -4,36 +4,50 @@ import (
 	"fmt"
 	log "github.com/ml444/glog"
 	"github.com/ml444/scheduler/brokers"
+	"github.com/ml444/scheduler/pb"
 	"sync"
 )
 
 const defaultConsumeConcurrentCount = 100
 
-type ConcurrentConsume struct {
-	cfg        *Config
+type IGroup interface {
+	Start()
+	Stop()
+}
+
+func GetGroup(policy pb.Policy) IGroup {
+	switch policy {
+	case pb.Policy_PolicyConcurrence:
+		return NewConcurrentConsume()
+	case pb.Policy_PolicySerial:
+		return NewSerialConsume()
+	default:
+		return NewConcurrentConsume()
+	}
+}
+
+type ConcurrentGroup struct {
 	wg         sync.WaitGroup
 	retryList  *brokers.MinHeap
+	queueGroup brokers.IQueueGroup
+	writer     brokers.IBackendWriter
 	workers    []*Worker
+	workerCount int
 	msgChan    chan *brokers.Item
 	finishChan chan *brokers.Item
-	writer     brokers.IBackendWriter
-	queueGroup brokers.IQueueGroup
 	isExist    bool
 }
 
-func NewConcurrentConsume(cfg *Config) *ConcurrentConsume {
-	return &ConcurrentConsume{cfg: cfg}
+func NewConcurrentConsume() *ConcurrentGroup {
+	return &ConcurrentGroup{}
 }
 
-func (c *ConcurrentConsume) init() {
-	if c.cfg.ConcurrentCount == 0 {
-		c.cfg.ConcurrentCount = defaultConsumeConcurrentCount
-	}
+func (c *ConcurrentGroup) init() {
 	c.msgChan = make(chan *brokers.Item, 1024)
 	c.finishChan = make(chan *brokers.Item, 1024)
 }
 
-func (c *ConcurrentConsume) Start() {
+func (c *ConcurrentGroup) Start() {
 	c.init()
 	go func() {
 		for !c.isExist {
@@ -41,12 +55,12 @@ func (c *ConcurrentConsume) Start() {
 			c.writer.SetFinish(msg)
 		}
 	}()
-	for i := 0; i < int(c.cfg.ConcurrentCount); i++ {
-		w := NewConsumeWorker(&c.wg, i, c.msgChan, c.finishChan)
-		c.workers = append(c.workers, w)
-		c.wg.Add(1)
-		//go w.Run()
-	}
+	//for i := 0; i < int(c.cfg.ConcurrentCount); i++ {
+	//	w := NewConsumeWorker(&c.wg, i, c.msgChan, c.finishChan)
+	//	c.workers = append(c.workers, w)
+	//	c.wg.Add(1)
+	//	//go w.Run()
+	//}
 	if c.retryList.Len() > 0 {
 		for {
 			msg := c.retryList.PopEl()
@@ -68,7 +82,14 @@ func (c *ConcurrentConsume) Start() {
 		c.msgChan <- item
 	}
 }
-func (c *ConcurrentConsume) Stop() {
+func (c *ConcurrentGroup) AddWorker(name string) {
+	w := NewConsumeWorker(name, &c.wg, c.msgChan, c.finishChan)
+	c.workers = append(c.workers, w)
+	c.wg.Add(1)
+	c.workerCount++
+	// TODO reBalance
+}
+func (c *ConcurrentGroup) Stop() {
 	for _, w := range c.workers {
 		w.notifyExit()
 	}
@@ -87,8 +108,7 @@ func (c *ConcurrentConsume) Stop() {
 	}
 }
 
-type SerialConsume struct {
-	cfg         *Config
+type SerialGroup struct {
 	wg          sync.WaitGroup
 	workerMap   map[int]*Worker
 	heapMap     map[int]*brokers.MinHeap
@@ -101,9 +121,8 @@ type SerialConsume struct {
 	isExist     bool
 }
 
-func NewSerialConsume(cfg *Config) *SerialConsume {
-	return &SerialConsume{
-		cfg:         cfg,
+func NewSerialConsume() *SerialGroup {
+	return &SerialGroup{
 		wg:          sync.WaitGroup{},
 		workerMap:   nil,
 		heapMap:     nil,
@@ -114,21 +133,13 @@ func NewSerialConsume(cfg *Config) *SerialConsume {
 	}
 }
 
-func (c *SerialConsume) init() {
-	if c.cfg == nil {
-		panic("Cfg is nil")
-	}
-	if c.cfg.ConcurrentCount == 0 {
-		c.workerCount = defaultConsumeConcurrentCount
-	} else {
-		c.workerCount = c.cfg.ConcurrentCount
-	}
+func (c *SerialGroup) init() {
 	c.workerMap = map[int]*Worker{}
 	c.msgChanMap = map[int]chan *brokers.Item{}
 	c.finishChan = make(chan *brokers.Item, 1024)
 }
 
-func (c *SerialConsume) Start() {
+func (c *SerialGroup) Start() {
 	c.init()
 	go func() {
 		for !c.isExist {
@@ -160,7 +171,7 @@ func (c *SerialConsume) Start() {
 		go c.specifyPartitionSend(i)
 	}
 }
-func (c *SerialConsume) specifyPartitionSend(partition int) {
+func (c *SerialGroup) specifyPartitionSend(partition int) {
 	ch, ok := c.msgChanMap[partition]
 	if !ok {
 		log.Error(fmt.Errorf("not found msgChan with partition %d", partition))
@@ -179,12 +190,12 @@ func (c *SerialConsume) specifyPartitionSend(partition int) {
 		ch <- item
 	}
 }
-func (c *SerialConsume) selectEmit(msg *brokers.Item) {
+func (c *SerialGroup) selectEmit(msg *brokers.Item) {
 	hashSize := msg.HashCode
 	idx := int(hashSize / uint64(c.workerCount))
 	c.msgChanMap[idx] <- msg
 }
-func (c *SerialConsume) Stop() {
+func (c *SerialGroup) Stop() {
 	for _, w := range c.workerMap {
 		w.notifyExit()
 	}
@@ -203,9 +214,9 @@ func (c *SerialConsume) Stop() {
 	}
 }
 
-type AsyncConsume struct {
+type AsyncGroup struct {
 	maxAsyncWaitMs uint32
 }
-type TimingConsume struct {
+type TimingGroup struct {
 	// 时间轮算法
 }

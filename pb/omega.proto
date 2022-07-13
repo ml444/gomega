@@ -26,18 +26,24 @@ message PubRsp {
   sint32 status = 1;
   string message = 2;
 }
+
 // strategy
+enum Policy {
+  PolicyConcurrence = 0;
+  PolicySerial = 1;
+}
+
 message SubReq {
-  enum Policy {
-    PolicyConcurrence = 0;
-    PolicySerial = 1;
-  }
+
   string client_id = 1;
-  string group = 2;
-  string namespace = 3;
-  string topic = 4;
-  uint32 partition = 5;
-  uint64 sequence = 6;
+  string namespace = 2;
+  string topic = 3;
+  string group = 4;
+  uint32 max_retry_count = 5;
+  uint32 max_timeout = 6;
+  uint32 retry_interval_ms =7;
+  uint32 item_lifetime_in_Queue = 8;
+  Policy policy = 9;
 }
 
 message SubRsp {

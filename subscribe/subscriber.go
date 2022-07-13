@@ -4,9 +4,9 @@ type Subscriber struct {
 	Id        string
 	Namespace string
 	Topic     string
-	Route     string
-	Addrs     []string
-	Cfg       *Config
+	//Route     string
+	//Addrs     []string
+	Cfg *Config
 
 	//Request  proto.Message
 	//Response proto.Message
@@ -19,6 +19,10 @@ func NewSubscriber(namespace, topicName string, subCfg *Config) *Subscriber {
 	return &Subscriber{
 		Cfg: subCfg,
 	}
+}
+
+func (s *Subscriber) GetToken(partition uint32) string {
+	return "token"
 }
 
 //func (s *Subscriber) UnMarshalRequest(data []byte) (proto.Message, error) {

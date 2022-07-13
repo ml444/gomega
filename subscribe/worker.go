@@ -1,11 +1,9 @@
 package subscribe
 
 import (
-	"context"
-	log "github.com/ml444/glog"
 	"github.com/ml444/scheduler/brokers"
 	"github.com/ml444/scheduler/pb"
-	"github.com/ml444/scheduler/subscribe/call"
+	"io"
 	"sync"
 	"time"
 )
@@ -94,11 +92,14 @@ func (w *Worker) Run(stream pb.OmegaService_ConsumeServer) error {
 		var err error
 		var req pb.ConsumeReq
 		err = stream.RecvMsg(&req)
+		if err == io.EOF {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
 
-		if req.IsRetry && prvItem.Sequence == req.Sequence {
+		if req.IsRetry && prvItem.Sequence+1 == req.Sequence {
 			maxRetryCount := w.getMaxRetryCount()
 			if prvItem.RetryCount >= maxRetryCount {
 				w.setFinish(prvItem)
@@ -157,49 +158,49 @@ func (w *Worker) Run(stream pb.OmegaService_ConsumeServer) error {
 //	nextExecAt int64
 //}
 
-func (w *Worker) ConsumeMsg(item *brokers.Item, payload *brokers.MsgPayload, consumeRsp *call.ConsumeRsp) error {
-	// TODO getRoute(checkRoute())
-	ctx := context.TODO()
-	s := w.S
-	var timeoutSeconds = w.Cfg.MaxExecTimeSeconds
-	if timeoutSeconds == 0 {
-		timeoutSeconds = defaultConsumeMaxExecTimeSeconds
-	}
-	meta := &call.MsgMeta{
-		CreatedAt: item.CreatedAt,
-		RetryCnt:  item.RetryCount,
-		Data:      payload.Data,
-		MsgId:     payload.MsgId,
-	}
-	if s.BeforeProcess != nil {
-		s.BeforeProcess(ctx, meta)
-	}
-	in, err := s.UnMarshalRequest(payload.Data)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	out := s.NewResponse()
-	err = call.Call(ctx, w.S.Route, &in, &out, timeoutSeconds)
-	if err != nil {
-		log.Error(err)
-		consumeRsp.Retry = true
-		item.RetryCount++
-		return err
-	}
-	if s.AfterProcess != nil {
-		isRetry, isIgnoreRetryCount := s.AfterProcess(ctx, meta, &in, &out)
-		if isRetry {
-			if consumeRsp != nil {
-				consumeRsp.Retry = true
-			}
-		}
-		if !isIgnoreRetryCount {
-			item.RetryCount++
-		}
-	}
-	return nil
-}
+//func (w *Worker) ConsumeMsg(item *brokers.Item, payload *brokers.MsgPayload, consumeRsp *call.ConsumeRsp) error {
+//	// TODO getRoute(checkRoute())
+//	ctx := context.TODO()
+//	s := w.S
+//	var timeoutSeconds = w.Cfg.MaxExecTimeSeconds
+//	if timeoutSeconds == 0 {
+//		timeoutSeconds = defaultConsumeMaxExecTimeSeconds
+//	}
+//	meta := &call.MsgMeta{
+//		CreatedAt: item.CreatedAt,
+//		RetryCnt:  item.RetryCount,
+//		Data:      payload.Data,
+//		MsgId:     payload.MsgId,
+//	}
+//	if s.BeforeProcess != nil {
+//		s.BeforeProcess(ctx, meta)
+//	}
+//	in, err := s.UnMarshalRequest(payload.Data)
+//	if err != nil {
+//		log.Error(err)
+//		return err
+//	}
+//	out := s.NewResponse()
+//	err = call.Call(ctx, w.S.Route, &in, &out, timeoutSeconds)
+//	if err != nil {
+//		log.Error(err)
+//		consumeRsp.Retry = true
+//		item.RetryCount++
+//		return err
+//	}
+//	if s.AfterProcess != nil {
+//		isRetry, isIgnoreRetryCount := s.AfterProcess(ctx, meta, &in, &out)
+//		if isRetry {
+//			if consumeRsp != nil {
+//				consumeRsp.Retry = true
+//			}
+//		}
+//		if !isIgnoreRetryCount {
+//			item.RetryCount++
+//		}
+//	}
+//	return nil
+//}
 
 func (w *Worker) getMaxRetryCount() uint32 {
 	s := w.Cfg

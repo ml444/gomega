@@ -56,7 +56,7 @@ func (s *OmegaServer) Subscribe(ctx context.Context, req *pb.SubReq) (*pb.SubRsp
 	}
 	subscribe.SubMgr.SetSubscriber(&sub)
 	rsp.Status = 10000
-
+	rsp.Token = sub.GetToken(req.Partition)
 	//{
 	//	// test
 	//	item := &brokers.Item{
@@ -82,6 +82,11 @@ func (s *OmegaServer) Subscribe(ctx context.Context, req *pb.SubReq) (*pb.SubRsp
 	//	}
 	//}
 	return &rsp, nil
+}
+
+func (s *OmegaServer) Consume(stream pb.OmegaService_ConsumeServer) error {
+	// get worker
+	return nil
 }
 
 func RunServer() error {

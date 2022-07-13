@@ -33,10 +33,11 @@ message SubReq {
     PolicySerial = 1;
   }
   string client_id = 1;
-  string namespace = 2;
-  string topic = 3;
-  uint32 partition = 4;
-  uint64 sequence = 5;
+  string group = 2;
+  string namespace = 3;
+  string topic = 4;
+  uint32 partition = 5;
+  uint64 sequence = 6;
 }
 
 message SubRsp {

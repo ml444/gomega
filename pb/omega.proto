@@ -11,6 +11,7 @@ package omega;
 service OmegaService {
   rpc Pub(PubReq) returns (PubRsp) {}
   rpc Sub(SubReq) returns (SubRsp) {}
+  rpc AddSubCfg(SubCfg) returns (Response) {}
   rpc Consume(stream ConsumeReq) returns (stream ConsumeRsp) {}
 }
 
@@ -34,16 +35,16 @@ enum Policy {
 }
 
 message SubReq {
-
   string client_id = 1;
   string namespace = 2;
   string topic = 3;
   string group = 4;
-  uint32 max_retry_count = 5;
-  uint32 max_timeout = 6;
-  uint32 retry_interval_ms =7;
-  uint32 item_lifetime_in_Queue = 8;
+//  uint32 max_retry_count = 5;
+//  uint32 max_timeout = 6;
+//  uint32 retry_interval_ms =7;
+//  uint32 item_lifetime_in_Queue = 8;
   Policy policy = 9;
+
 }
 
 message SubRsp {
@@ -51,6 +52,21 @@ message SubRsp {
   string token = 2;
 }
 
+message SubCfg {
+  string namespace = 1;
+  string topic = 2;
+  string group = 3;
+  uint32 version = 4;
+  uint32 max_retry_count = 5;
+  uint32 max_timeout = 6;
+  uint32 retry_interval_ms =7;
+  uint32 item_lifetime_in_queue = 8;
+}
+
+message Response {
+  sint32 status = 1;
+  string message = 2;
+}
 message ConsumeReq {
   string token = 1;
   uint64 sequence = 2;

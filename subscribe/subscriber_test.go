@@ -1,13 +1,6 @@
 package subscribe
 
-import (
-	"context"
-	"github.com/golang/protobuf/proto"
-	"github.com/ml444/scheduler/subscribe/call"
-	"reflect"
-	"testing"
-)
-
+/*
 func TestNewSubscriber(t *testing.T) {
 	type args struct {
 		namespace string
@@ -17,7 +10,7 @@ func TestNewSubscriber(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want *Subscriber
+		want *SubConfig
 	}{
 		// TODO: Add test cases.
 	}
@@ -64,7 +57,7 @@ func TestSubscriber_NewResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := Subscriber{
+			s := SubConfig{
 				Response: tt.fields.Response,
 			}
 			if got := s.NewResponse(); !reflect.DeepEqual(got, tt.want) {
@@ -130,7 +123,7 @@ func TestSubscriber_UnMarshalRequest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Subscriber{
+			s := &SubConfig{
 				Id:            tt.fields.Name,
 				Topic:         tt.fields.Topic,
 				Route:         tt.fields.Route,
@@ -152,3 +145,5 @@ func TestSubscriber_UnMarshalRequest(t *testing.T) {
 		})
 	}
 }
+
+*/

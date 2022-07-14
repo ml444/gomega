@@ -13,33 +13,35 @@ const defaultConsumeConcurrentCount = 100
 type IGroup interface {
 	Start()
 	Stop()
+	AddWorker(name string) *Worker
 }
 
-func GetGroup(policy pb.Policy) IGroup {
+func GetGroup(policy pb.Policy, cfg *SubConfig) IGroup {
 	switch policy {
 	case pb.Policy_PolicyConcurrence:
-		return NewConcurrentConsume()
+		return NewConcurrentConsume(cfg)
 	case pb.Policy_PolicySerial:
-		return NewSerialConsume()
+		return NewSerialConsume(cfg)
 	default:
-		return NewConcurrentConsume()
+		return NewConcurrentConsume(cfg)
 	}
 }
 
 type ConcurrentGroup struct {
-	wg         sync.WaitGroup
-	retryList  *brokers.MinHeap
-	queueGroup brokers.IQueueGroup
-	writer     brokers.IBackendWriter
-	workers    []*Worker
+	cfg         *SubConfig
+	wg          sync.WaitGroup
+	retryList   *brokers.MinHeap
+	queueGroup  brokers.IQueueGroup
+	writer      brokers.IBackendWriter
+	workers     []*Worker
 	workerCount int
-	msgChan    chan *brokers.Item
-	finishChan chan *brokers.Item
-	isExist    bool
+	msgChan     chan *brokers.Item
+	finishChan  chan *brokers.Item
+	isExist     bool
 }
 
-func NewConcurrentConsume() *ConcurrentGroup {
-	return &ConcurrentGroup{}
+func NewConcurrentConsume(cfg *SubConfig) *ConcurrentGroup {
+	return &ConcurrentGroup{cfg: cfg}
 }
 
 func (c *ConcurrentGroup) init() {
@@ -82,12 +84,13 @@ func (c *ConcurrentGroup) Start() {
 		c.msgChan <- item
 	}
 }
-func (c *ConcurrentGroup) AddWorker(name string) {
+func (c *ConcurrentGroup) AddWorker(name string) *Worker {
 	w := NewConsumeWorker(name, &c.wg, c.msgChan, c.finishChan)
 	c.workers = append(c.workers, w)
 	c.wg.Add(1)
 	c.workerCount++
 	// TODO reBalance
+	return w
 }
 func (c *ConcurrentGroup) Stop() {
 	for _, w := range c.workers {
@@ -109,8 +112,9 @@ func (c *ConcurrentGroup) Stop() {
 }
 
 type SerialGroup struct {
+	cfg         *SubConfig
 	wg          sync.WaitGroup
-	workerMap   map[int]*Worker
+	workers     []*Worker
 	heapMap     map[int]*brokers.MinHeap
 	msgChanMap  map[int]chan *brokers.Item
 	finishChan  chan *brokers.Item
@@ -121,10 +125,10 @@ type SerialGroup struct {
 	isExist     bool
 }
 
-func NewSerialConsume() *SerialGroup {
+func NewSerialConsume(cfg *SubConfig) *SerialGroup {
 	return &SerialGroup{
+		cfg:         cfg,
 		wg:          sync.WaitGroup{},
-		workerMap:   nil,
 		heapMap:     nil,
 		msgChanMap:  nil,
 		finishChan:  nil,
@@ -134,7 +138,6 @@ func NewSerialConsume() *SerialGroup {
 }
 
 func (c *SerialGroup) init() {
-	c.workerMap = map[int]*Worker{}
 	c.msgChanMap = map[int]chan *brokers.Item{}
 	c.finishChan = make(chan *brokers.Item, 1024)
 }
@@ -147,15 +150,15 @@ func (c *SerialGroup) Start() {
 			c.writer.SetFinish(msg)
 		}
 	}()
-	for i := 0; i < int(c.workerCount); i++ {
-		// TODO chan
-		ch := make(chan *brokers.Item, 1024)
-		c.msgChanMap[i] = ch
-		w := NewConsumeWorker(&c.wg, i, ch, c.finishChan)
-		c.workerMap[i] = w
-		c.wg.Add(1)
-		//go w.Run()
-	}
+	//for i := 0; i < int(c.workerCount); i++ {
+	//	// TODO chan
+	//	ch := make(chan *brokers.Item, 1024)
+	//	c.msgChanMap[i] = ch
+	//	w := NewConsumeWorker(&c.wg, i, ch, c.finishChan)
+	//	c.workerMap[i] = w
+	//	c.wg.Add(1)
+	//	//go w.Run()
+	//}
 
 	if len(c.retryList) > 0 {
 		for {
@@ -171,6 +174,19 @@ func (c *SerialGroup) Start() {
 		go c.specifyPartitionSend(i)
 	}
 }
+
+func (c *SerialGroup) AddWorker(name string) *Worker {
+	// TODO chan
+	ch := make(chan *brokers.Item, 1024)
+	w := NewConsumeWorker(name, &c.wg, ch, c.finishChan)
+	c.msgChanMap[int(c.workerCount)] = ch
+	c.workers = append(c.workers, w)
+	c.wg.Add(1)
+	c.workerCount++
+	// TODO reBalance
+	return w
+}
+
 func (c *SerialGroup) specifyPartitionSend(partition int) {
 	ch, ok := c.msgChanMap[partition]
 	if !ok {
@@ -196,11 +212,11 @@ func (c *SerialGroup) selectEmit(msg *brokers.Item) {
 	c.msgChanMap[idx] <- msg
 }
 func (c *SerialGroup) Stop() {
-	for _, w := range c.workerMap {
+	for _, w := range c.workers {
 		w.notifyExit()
 	}
 	c.wg.Wait()
-	for _, w := range c.workerMap {
+	for _, w := range c.workers {
 		if w.retryList != nil {
 			for {
 				el := w.retryList.PopEl()

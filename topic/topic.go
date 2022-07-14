@@ -23,7 +23,7 @@ type Topic struct {
 	Name      string
 	Partition int
 	//cfg           *Config
-	subscribers   map[string]*subscribe.Subscriber
+	subscribers   map[string]*subscribe.SubConfig
 	subscribersMu sync.RWMutex
 
 	Priority uint32
@@ -32,14 +32,12 @@ type Topic struct {
 func NewTopic(t *Config) (*Topic, error) {
 	log.Infof("new topic %+v", t)
 
-	x := &Topic{
-
-	}
+	x := &Topic{}
 
 	return x, nil
 }
 
-func (p *Topic) getSubscriber(name string) *subscribe.Subscriber {
+func (p *Topic) getSubscriber(name string) *subscribe.SubConfig {
 	p.subscribersMu.RLock()
 	x := p.subscribers[name]
 	p.subscribersMu.RUnlock()

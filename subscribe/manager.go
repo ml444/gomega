@@ -1,6 +1,9 @@
 package subscribe
 
-import "sync"
+import (
+	"reflect"
+	"sync"
+)
 
 var SubMgr *Manager
 
@@ -9,47 +12,75 @@ func init() {
 }
 
 type Manager struct {
-	subMap    map[string]*Subscriber
+	subCfgMap map[string]*SubConfig
+	groupMap  map[string]IGroup
 	workerMap map[string]*Worker
 	mu        sync.RWMutex
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		subMap:    map[string]*Subscriber{},
+		subCfgMap: map[string]*SubConfig{},
 		workerMap: map[string]*Worker{},
 		mu:        sync.RWMutex{},
 	}
 }
 
-func (m *Manager) ReplaceSubscriber(oldKey string, newSub *Subscriber) {
-	//if m.subMap == nil {
-	//	m.subMap = map[string]*Subscriber{}
+func (m *Manager) GetToken(key string) string {
+	cfg, ok := m.subCfgMap[key]
+	if ok {
+		return ""
+	}
+	group, ok := m.groupMap[key]
+	if !ok {
+		group = GetGroup(cfg.Type, cfg)
+	}
+	token := m.generateToken(cfg)
+	worker := group.AddWorker(token)
+	m.workerMap[token] = worker
+	return token
+}
+
+func (m *Manager) generateToken(cfg *SubConfig) string {
+	return "test_token"
+}
+func (m *Manager) UpdateSubCfg(key string, newCfg *SubConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cfg, ok := m.subCfgMap[key]
+	if ok {
+		if !reflect.DeepEqual(cfg, newCfg) {
+			if n := newCfg.MaxRetryCount; n != 0 && n != cfg.MaxRetryCount {
+				cfg.MaxRetryCount = n
+			}
+			if n := newCfg.MaxTimeout; n != 0 && n != cfg.MaxTimeout {
+				cfg.MaxTimeout = n
+			}
+			if n := newCfg.RetryIntervalMs; n != 0 && n != cfg.RetryIntervalMs {
+				cfg.RetryIntervalMs = n
+			}
+			if n := newCfg.ItemLifetimeInQueue; n != 0 && n != cfg.ItemLifetimeInQueue {
+				cfg.ItemLifetimeInQueue = n
+			}
+		}
+	} else {
+		m.AddSubCfg(newCfg)
+	}
+}
+
+func (m *Manager) AddSubCfg(sub *SubConfig) {
+	//if m.subCfgMap == nil {
+	//	m.subCfgMap = map[string]*SubConfig{}
 	//}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if sub, ok := m.subMap[oldKey]; ok {
-		sub.Stop()
-		delete(m.subMap, oldKey)
-	}
-	if newSub.Id == "" {
-		newSub.Id = newSub.GenerateId()
-	}
-	m.subMap[newSub.Id] = newSub
+	m.subCfgMap[sub.Name()] = sub
 }
 
-func (m *Manager) AddSubscriber(sub *Subscriber) {
-	//if m.subMap == nil {
-	//	m.subMap = map[string]*Subscriber{}
-	//}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.subMap[sub.Id] = sub
-	go sub.Start()
-}
-
-func (m *Manager) GetSubscriber(key string) *Subscriber {
-	if sub, ok := m.subMap[key]; ok {
+func (m *Manager) GetSubCfg(key string) *SubConfig {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if sub, ok := m.subCfgMap[key]; ok {
 		return sub
 	} else {
 		return nil

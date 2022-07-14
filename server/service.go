@@ -48,23 +48,33 @@ func (s *OmegaServer) Pub(ctx context.Context, req *pb.PubReq) (*pb.PubRsp, erro
 func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, error) {
 	var rsp pb.SubRsp
 	fmt.Println("====> Subscribe", req.ClientId, "===")
-	sub := subscribe.Subscriber{
-		Type:                req.Policy,
-		Namespace:           req.Namespace,
-		Topic:               req.Topic,
-		GroupName:           req.Group,
-		MaxRetryCount:       req.MaxRetryCount,
-		MaxTimeout:          req.MaxTimeout,
-		RetryIntervalMs:     req.RetryIntervalMs,
-		ItemLifetimeInQueue: req.ItemLifetimeIn_Queue,
-	}
-	sub.Init()
+	//cfg := subscribe.SubConfig{
+	//	Namespace:           req.Namespace,
+	//	Topic:               req.Topic,
+	//	GroupName:           req.Group,
+	//	MaxRetryCount:       req.MaxRetryCount,
+	//	MaxTimeout:          req.MaxTimeout,
+	//	RetryIntervalMs:     req.RetryIntervalMs,
+	//	ItemLifetimeInQueue: req.ItemLifetimeIn_Queue,
+	//}
+	//cfg.Init()
+	cfgKey := subscribe.GetSubCfgName(req.Namespace, req.Topic, req.Group)
 	mgr := subscribe.SubMgr
-	if old := mgr.GetSubscriber(sub.Id); old == nil {
-		mgr.AddSubscriber(&sub)
+	if c := mgr.GetSubCfg(cfgKey); c == nil {
+		cfg := subscribe.SubConfig{
+			Type:                req.Policy,
+			Namespace:           req.Namespace,
+			Topic:               req.Topic,
+			GroupName:           req.Group,
+			MaxRetryCount:       config.DefaultMaxRetryCount,
+			MaxTimeout:          config.DefaultMaxTimeout,
+			RetryIntervalMs:     config.DefaultRetryIntervalMs,
+			ItemLifetimeInQueue: config.DefaultItemLifetimeInQueue,
+		}
+		mgr.AddSubCfg(&cfg)
 	}
 	rsp.Status = 10000
-	rsp.Token = sub.GetToken()
+	rsp.Token = mgr.GetToken(cfgKey)
 	//{
 	//	// test
 	//	item := &brokers.Item{
@@ -83,7 +93,7 @@ func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, erro
 	//		DelayValue: 0,
 	//	}
 	//	consumeRsp := call.ConsumeRsp{}
-	//	worker := subscribe.Worker{S: &sub, Cfg: &subscribe.Config{MaxExecTimeSeconds: 123}}
+	//	worker := subscribe.Worker{S: &cfg, Cfg: &subscribe.Config{MaxExecTimeSeconds: 123}}
 	//	err := worker.ConsumeMsg(item, &payload, &consumeRsp)
 	//	if err != nil {
 	//		println(err)

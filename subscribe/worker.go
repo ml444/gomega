@@ -22,11 +22,9 @@ type Worker struct {
 	finishChan chan *brokers.Item
 	retryList  *brokers.MinHeap
 	tk         *time.Ticker
-	//Cfg        *Config
+	Cfg        *SubConfig
 	//futureList *structure.Tree // async
 	blockLimit int
-
-	S *Subscriber
 }
 
 const defaultTimeout = time.Millisecond * 10
@@ -36,7 +34,7 @@ const (
 	defaultConsumeMaxRetryCount      = 5
 )
 
-func NewConsumeWorker(name string,  wg *sync.WaitGroup, msgChan chan *brokers.Item, finishChan chan *brokers.Item) *Worker {
+func NewConsumeWorker(name string, wg *sync.WaitGroup, msgChan chan *brokers.Item, finishChan chan *brokers.Item) *Worker {
 	return &Worker{
 		name:       name,
 		wg:         wg,
@@ -215,10 +213,10 @@ func (w *Worker) getNextRetryWait(retryCnt uint32) int64 {
 	s := w.Cfg
 	retryMs := s.RetryIntervalMs
 	if s != nil && retryMs > 0 {
-		if s.RetryIntervalStep > 0 {
-			return retryMs * s.RetryIntervalStep
-		}
-		return retryMs
+		//if s.RetryIntervalStep > 0 {
+		//	return retryMs * s.RetryIntervalStep
+		//}
+		return int64(retryMs)
 	}
 	if retryCnt == 0 {
 		retryCnt = 1

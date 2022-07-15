@@ -41,16 +41,18 @@ type ConcurrentGroup struct {
 }
 
 func NewConcurrentConsume(cfg *SubConfig) *ConcurrentGroup {
-	return &ConcurrentGroup{cfg: cfg}
+	c := ConcurrentGroup{cfg: cfg}
+	c.init()
+	return &c
 }
 
 func (c *ConcurrentGroup) init() {
 	c.msgChan = make(chan *brokers.Item, 1024)
 	c.finishChan = make(chan *brokers.Item, 1024)
+	c.retryList = brokers.NewMinHeap()
 }
 
 func (c *ConcurrentGroup) Start() {
-	c.init()
 	go func() {
 		for !c.isExist {
 			msg := <-c.finishChan
@@ -72,20 +74,37 @@ func (c *ConcurrentGroup) Start() {
 			c.msgChan <- msg.Value.(*brokers.Item)
 		}
 	}
+	var testSeq uint64
 	for {
-		item, err := c.queueGroup.SequentialRead()
-		if err != nil {
-			log.Error(err)
-			continue
+		//item, err := c.queueGroup.SequentialRead()
+		//if err != nil {
+		//	log.Error(err)
+		//	continue
+		//}
+		//if item == nil {
+		//	continue
+		//}
+		testSeq++
+		item := &brokers.Item{
+			Sequence:   testSeq,
+			HashCode:   testSeq,
+			CreatedAt:  0,
+			Partition:  0,
+			Offset:     0,
+			Size:       0,
+			RetryCount: 0,
+			DelayType:  0,
+			DelayValue: 0,
+			Priority:   0,
+			Data:       []byte("wahaha"),
+			Namespace:  "default",
 		}
-		if item == nil {
-			continue
-		}
+		fmt.Println("===>", item.Sequence)
 		c.msgChan <- item
 	}
 }
 func (c *ConcurrentGroup) AddWorker(name string) *Worker {
-	w := NewConsumeWorker(name, &c.wg, c.msgChan, c.finishChan)
+	w := NewConsumeWorker(name, &c.wg, &c.msgChan, &c.finishChan)
 	c.workers = append(c.workers, w)
 	c.wg.Add(1)
 	c.workerCount++
@@ -178,7 +197,7 @@ func (c *SerialGroup) Start() {
 func (c *SerialGroup) AddWorker(name string) *Worker {
 	// TODO chan
 	ch := make(chan *brokers.Item, 1024)
-	w := NewConsumeWorker(name, &c.wg, ch, c.finishChan)
+	w := NewConsumeWorker(name, &c.wg, &ch, &c.finishChan)
 	c.msgChanMap[int(c.workerCount)] = ch
 	c.workers = append(c.workers, w)
 	c.wg.Add(1)

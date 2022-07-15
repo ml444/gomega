@@ -6,9 +6,9 @@ import (
 )
 
 func TestPub(t *testing.T) {
-	rsp, err := Pub(context.Background(), &PubRequest{
-		Namespace:            "test_topic",
-		TopicName:            "topic_test_1",
+	rsp, err := Pub(context.Background(), &PubReq{
+		Namespace:            "default",
+		TopicName:            "test_topic",
 		Partition:            0,
 		HashCode:             123456,
 		Data:                 []byte{},

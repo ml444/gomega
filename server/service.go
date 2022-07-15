@@ -10,6 +10,7 @@ import (
 	"github.com/ml444/scheduler/publish"
 	"github.com/ml444/scheduler/subscribe"
 	"google.golang.org/grpc"
+	"io"
 	"net"
 	"time"
 )
@@ -104,7 +105,24 @@ func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, erro
 
 func (s *OmegaServer) Consume(stream pb.OmegaService_ConsumeServer) error {
 	// get worker
-	return nil
+	mgr := subscribe.SubMgr
+	for{
+		req, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if req.Token != "" {
+			fmt.Println(req.Token)
+			worker := mgr.GetWorker(req.Token)
+			if worker == nil {
+				return errors.New("not found worker")
+			}
+			return worker.Run(req, stream)
+		}
+	}
 }
 
 func RunServer() error {

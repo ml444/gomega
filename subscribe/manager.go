@@ -21,6 +21,7 @@ type Manager struct {
 func NewManager() *Manager {
 	return &Manager{
 		subCfgMap: map[string]*SubConfig{},
+		groupMap: map[string]IGroup{},
 		workerMap: map[string]*Worker{},
 		mu:        sync.RWMutex{},
 	}
@@ -28,16 +29,18 @@ func NewManager() *Manager {
 
 func (m *Manager) GetToken(key string) string {
 	cfg, ok := m.subCfgMap[key]
-	if ok {
+	if !ok {
 		return ""
 	}
 	group, ok := m.groupMap[key]
 	if !ok {
 		group = GetGroup(cfg.Type, cfg)
+		m.groupMap[key] = group
 	}
 	token := m.generateToken(cfg)
 	worker := group.AddWorker(token)
 	m.workerMap[token] = worker
+	go group.Start()
 	return token
 }
 
@@ -85,4 +88,8 @@ func (m *Manager) GetSubCfg(key string) *SubConfig {
 	} else {
 		return nil
 	}
+}
+
+func (m *Manager) GetWorker(token string) *Worker {
+	return m.workerMap[token]
 }

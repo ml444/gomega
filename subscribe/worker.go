@@ -1,6 +1,7 @@
 package subscribe
 
 import (
+	"fmt"
 	"github.com/ml444/scheduler/brokers"
 	"github.com/ml444/scheduler/pb"
 	"io"
@@ -34,13 +35,13 @@ const (
 	defaultConsumeMaxRetryCount      = 5
 )
 
-func NewConsumeWorker(name string, wg *sync.WaitGroup, msgChan chan *brokers.Item, finishChan chan *brokers.Item) *Worker {
+func NewConsumeWorker(name string, wg *sync.WaitGroup, msgChan *chan *brokers.Item, finishChan *chan *brokers.Item) *Worker {
 	return &Worker{
 		name:       name,
 		wg:         wg,
 		exitChan:   make(chan int, 1),
-		msgChan:    msgChan,
-		finishChan: finishChan,
+		msgChan:    *msgChan,
+		finishChan: *finishChan,
 		retryList:  brokers.NewMinHeap(),
 		tk:         time.NewTicker(defaultTimeout),
 	}
@@ -59,14 +60,14 @@ func (w *Worker) notifyExit() {
 func (w *Worker) NextMsg(exit *bool) *brokers.Item {
 
 	select {
-	case msg := <-w.msgChan:
+	case msg := <- w.msgChan:
 		return msg
 	case <-w.exitChan:
 		*exit = true
 		return nil
-	case <-w.tk.C:
-		//TODO no tk
-		return nil
+	//case <-w.tk.C:
+	//	//TODO no tk
+	//	return nil
 	}
 }
 
@@ -82,41 +83,54 @@ func (w *Worker) tryRetryMsg() *brokers.Item {
 func (w *Worker) setFinish(msg *brokers.Item) {
 	w.finishChan <- msg
 }
-func (w *Worker) Run(stream pb.OmegaService_ConsumeServer) error {
+
+func (w *Worker) ConsumeMsg(){}
+
+func (w *Worker) Run(firstReq *pb.ConsumeReq, stream pb.OmegaService_ConsumeServer) error {
 	defer w.wg.Done()
 
+	var err error
+	var req *pb.ConsumeReq
 	var prvItem *brokers.Item
 	for {
-		var err error
-		var req pb.ConsumeReq
-		err = stream.RecvMsg(&req)
-		if err == io.EOF {
+		if firstReq != nil {
+			req = firstReq
+			firstReq = nil
+		} else {
+			req, err = stream.Recv()
+			if err == io.EOF {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+		}
+		if req == nil {
 			return nil
 		}
-		if err != nil {
-			return err
+		if prvItem != nil {
+			if req.IsRetry && prvItem.Sequence+1 == req.Sequence {
+				maxRetryCount := w.getMaxRetryCount()
+				if prvItem.RetryCount >= maxRetryCount {
+					w.setFinish(prvItem)
+				} else {
+					var waitMs int64
+					if req.RetryIntervalMs > 0 {
+						waitMs = req.RetryIntervalMs
+					} else {
+						waitMs = w.getNextRetryWait(prvItem.RetryCount) * 1000
+					}
+					execAt := time.Now().UnixMilli() + waitMs
+					w.retryList.PushEl(&brokers.MinHeapElement{
+						Value:    prvItem,
+						Priority: execAt,
+					})
+				}
+			} else {
+				//w.setFinish(prvItem)
+			}
 		}
 
-		if req.IsRetry && prvItem != nil && prvItem.Sequence+1 == req.Sequence {
-			maxRetryCount := w.getMaxRetryCount()
-			if prvItem.RetryCount >= maxRetryCount {
-				w.setFinish(prvItem)
-			} else {
-				var waitMs int64
-				if req.RetryIntervalMs > 0 {
-					waitMs = req.RetryIntervalMs
-				} else {
-					waitMs = w.getNextRetryWait(prvItem.RetryCount) * 1000
-				}
-				execAt := time.Now().UnixMilli() + waitMs
-				w.retryList.PushEl(&brokers.MinHeapElement{
-					Value:    prvItem,
-					Priority: execAt,
-				})
-			}
-		} else {
-			w.setFinish(prvItem)
-		}
 		var exit bool
 		var msg *brokers.Item
 		var blockCount int
@@ -133,6 +147,7 @@ func (w *Worker) Run(stream pb.OmegaService_ConsumeServer) error {
 		if msg == nil {
 			continue
 		}
+		fmt.Println("===> msg:", msg.Sequence)
 		err = stream.Send(&pb.ConsumeRsp{
 			Partition:  msg.Partition,
 			Sequence:   msg.Sequence,
@@ -146,7 +161,6 @@ func (w *Worker) Run(stream pb.OmegaService_ConsumeServer) error {
 		// TODO Skip blackList msg
 		//var consumeRsp call.ConsumeRsp
 		//_ = w.ConsumeMsg(msg, payload, &consumeRsp)
-
 	}
 	return nil
 }

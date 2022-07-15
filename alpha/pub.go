@@ -22,9 +22,9 @@ func Init() {
 	//cli = NewOmegaServiceClient(conn)
 
 }
-func Pub(ctx context.Context, req *PubRequest) (*PubResponse, error) {
+func Pub(ctx context.Context, req *PubReq) (*PubRsp, error) {
 	var err error
-	var rsp PubResponse
+	var rsp PubRsp
 	Init()
 	//return cli.Pub(ctx, req)
 	err = conn.Invoke(ctx, "/omega.OmegaService/Pub", req, &rsp)

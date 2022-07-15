@@ -2,7 +2,7 @@ package alpha
 
 import (
 	"context"
-	"github.com/ml444/scheduler/subscribe/call"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -61,38 +61,37 @@ import (
 //
 //func (*Feature) ProtoMessage() {}
 
-func SendCall() {
-	ctx := context.TODO()
-	route := "routeguide.RouteGuide/GetFeature"
-	in := &Point{Latitude: 409146138, Longitude: -746188906}
-	out := &Feature{}
-	err := call.Call(ctx, route, in, out, 123)
-	if err != nil {
-		println(err)
-	}
-}
+//func SendCall() {
+//	ctx := context.TODO()
+//	route := "routeguide.RouteGuide/GetFeature"
+//	in := &Point{Latitude: 409146138, Longitude: -746188906}
+//	out := &Feature{}
+//	err := call.Call(ctx, route, in, out, 123)
+//	if err != nil {
+//		println(err)
+//	}
+//}
 func TestSubscribe(t *testing.T) {
 	type args struct {
 		ctx context.Context
-		req *SubscribeReq
+		req *SubReq
 	}
 	tests := []struct {
 		name    string
 		args    args
-		want    *SubscribeRsp
+		want    *SubRsp
 		wantErr bool
 	}{
 		{
 			name: "",
 			args: args{
 				ctx: context.TODO(),
-				req: &SubscribeReq{
-					Namespace: "",
-					Name:      "",
-					Topic:     "",
-					Route:     "/routeguide.RouteGuide/GetFeature",
-					Request:   &Point{},
-					Response:  &Feature{},
+				req: &SubReq{
+					ClientId:      "test_client_id",
+					Namespace:     "default",
+					Topic:         "test_topic",
+					Group:         "test_group",
+					Policy:        0,
 				},
 			},
 			want:    nil,
@@ -101,13 +100,44 @@ func TestSubscribe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Subscribe(tt.args.ctx, tt.args.req)
+			got, err := Sub(tt.args.ctx, tt.args.req)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Subscribe() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Subscribe() got = %v, want %v", got, tt.want)
+			}
+			t.Log(got)
+		})
+	}
+}
+
+
+func handler(r *ConsumeRsp) error {
+	fmt.Println(string(r.Data))
+	return nil
+}
+
+func TestLoopConsume(t *testing.T) {
+	type args struct {
+		handler func(r *ConsumeRsp) error
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name:    "test",
+			args:    args{handler: handler},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := LoopConsume(tt.args.handler); (err != nil) != tt.wantErr {
+				t.Errorf("LoopConsume() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

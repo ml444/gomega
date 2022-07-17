@@ -26,6 +26,7 @@ type Worker struct {
 	Cfg        *SubConfig
 	//futureList *structure.Tree // async
 	blockLimit int
+	isSync     bool
 }
 
 const defaultTimeout = time.Millisecond * 10
@@ -60,14 +61,14 @@ func (w *Worker) notifyExit() {
 func (w *Worker) NextMsg(exit *bool) *brokers.Item {
 
 	select {
-	case msg := <- w.msgChan:
+	case msg := <-w.msgChan:
 		return msg
 	case <-w.exitChan:
 		*exit = true
 		return nil
-	//case <-w.tk.C:
-	//	//TODO no tk
-	//	return nil
+		//case <-w.tk.C:
+		//	//TODO no tk
+		//	return nil
 	}
 }
 
@@ -84,10 +85,17 @@ func (w *Worker) setFinish(msg *brokers.Item) {
 	w.finishChan <- msg
 }
 
-func (w *Worker) ConsumeMsg(){}
+func (w *Worker) ConsumeMsg() {}
 
 func (w *Worker) Run(firstReq *pb.ConsumeReq, stream pb.OmegaService_ConsumeServer) error {
 	defer w.wg.Done()
+	if w.isSync {
+		return w.syncRun(firstReq, stream)
+	} else {
+		return w.asyncRun(stream)
+	}
+}
+func (w *Worker) syncRun(firstReq *pb.ConsumeReq, stream pb.OmegaService_ConsumeServer) error {
 
 	var err error
 	var req *pb.ConsumeReq
@@ -109,7 +117,7 @@ func (w *Worker) Run(firstReq *pb.ConsumeReq, stream pb.OmegaService_ConsumeServ
 			return nil
 		}
 		if prvItem != nil {
-			if req.IsRetry && prvItem.Sequence+1 == req.Sequence {
+			if req.IsRetry && prvItem.Sequence == req.Sequence {
 				maxRetryCount := w.getMaxRetryCount()
 				if prvItem.RetryCount >= maxRetryCount {
 					w.setFinish(prvItem)
@@ -163,6 +171,57 @@ func (w *Worker) Run(firstReq *pb.ConsumeReq, stream pb.OmegaService_ConsumeServ
 		//_ = w.ConsumeMsg(msg, payload, &consumeRsp)
 	}
 	return nil
+}
+
+func (w *Worker) asyncRun(stream pb.OmegaService_ConsumeServer) error {
+	var err error
+	var isExist bool
+	go func(stream pb.OmegaService_ConsumeServer) {
+		var in *pb.ConsumeReq
+		for {
+			in, err = stream.Recv()
+			if err == io.EOF {
+				isExist = true
+				return
+			}
+			if err != nil {
+				isExist = true
+				return
+			}
+			setFinish(in)
+		}
+	}(stream)
+
+	for !isExist {
+		var exit bool
+		var msg *brokers.Item
+		var blockCount int
+		blockCount = w.retryList.Len()
+		if blockCount > 0 {
+			msg = w.tryRetryMsg()
+		}
+		if msg == nil {
+			msg = w.NextMsg(&exit)
+		}
+		if exit {
+			break
+		}
+		if msg == nil {
+			continue
+		}
+		fmt.Println("===> msg:", msg.Sequence)
+		err = stream.Send(&pb.ConsumeRsp{
+			Partition:  msg.Partition,
+			Sequence:   msg.Sequence,
+			Data:       msg.Data,
+			RetryCount: msg.RetryCount,
+		})
+		if err != nil {
+			return err
+		}
+		//prvItem = msg
+	}
+	return err
 }
 
 //type retryItem struct {

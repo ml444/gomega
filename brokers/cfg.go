@@ -1,6 +1,0 @@
-package brokers
-
-const (
-	IndexFilePath = "."
-
-)

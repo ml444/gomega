@@ -188,7 +188,8 @@ func (w *Worker) asyncRun(stream pb.OmegaService_ConsumeServer) error {
 				isExist = true
 				return
 			}
-			setFinish(in)
+			fmt.Println(in.Sequence)
+			//setFinish(in)
 		}
 	}(stream)
 

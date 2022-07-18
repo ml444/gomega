@@ -68,11 +68,14 @@ message Response {
   string message = 2;
 }
 message ConsumeReq {
-  string token = 1;
-  uint64 sequence = 2;
-  bool is_retry = 3;
-  bool ignore_retry_count = 4;
-  sint64 retry_interval_ms = 5;
+  string namespace = 1;
+  string topic = 2;
+  string group = 3;
+  string token = 4;
+  uint64 sequence = 5;
+  bool is_retry = 6;
+  bool ignore_retry_count = 7;
+  sint64 retry_interval_ms = 8;
 }
 
 message ConsumeRsp {

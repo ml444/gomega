@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/ml444/glog"
+	"github.com/ml444/scheduler/config"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -20,45 +22,63 @@ type IQueueGroup interface {
 	SpecifyRead(partition int) (*Item, error)
 }
 
-type FifoQueue struct {
-	Name      string
-	Partition int
-	cursor    uint64
-	offset    uint64
-	beginSeq  uint64
-	endSeq    uint64
-	items     []*Item
-	indexFile *os.File
-	dataFile  *os.File
-	Len       uint64
+type Queue struct {
+	filePrefix string
+	Partition  int
+	cursor     uint64
+	offset     uint64
+	beginSeq   uint64
+	endSeq     uint64
+	items      []*Item
+	indexFile  *os.File
+	dataFile   *os.File
+	//Len       uint64
 
 	MaxItemCount uint32
 	MaxDataBytes uint32
 }
 
-func NewFifoQueue() *FifoQueue {
-	return &FifoQueue{
-		cursor:       0,
-		offset:       0,
-		beginSeq:     0,
-		endSeq:       0,
-		items:        nil,
-		dataFile:     nil,
-		Len:          0,
+func NewQueue(baseDir string, parentPath string) (*Queue, error) {
+	q := Queue{
+		filePrefix: filepath.Join(baseDir, parentPath),
+		cursor:   0,
+		offset:   0,
+		beginSeq: 0,
+		endSeq:   0,
+		items:    nil,
+		//indexFile: nil,
+		//dataFile: nil,
+		//Len:          0,
 		MaxItemCount: 8192,
 		MaxDataBytes: 64 * 1024 * 1024,
 	}
+	err := q.Init()
+	if err != nil {
+		return nil, err
+	}
+	return &q, nil
 }
 
-func (q *FifoQueue) Init() {
-
-}
-
-func (q *FifoQueue) Push(item *Item) error {
+func (q *Queue) Init() error {
+	var err error
+	q.indexFile, err = q.openIndexFile()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	q.dataFile, err = q.openDataFile()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 	return nil
 }
 
-func (q *FifoQueue) Pop() (*Item, error) {
+func (q *Queue) Push(item *Item) error {
+	return nil
+}
+
+func (q *Queue) Pop() (*Item, error) {
 	if len(q.items) == 0 {
 		return nil, nil
 	}
@@ -71,7 +91,7 @@ func (q *FifoQueue) Pop() (*Item, error) {
 	return item, nil
 }
 
-func (q *FifoQueue) PopWait() (*Item, error) {
+func (q *Queue) PopWait() (*Item, error) {
 	item, err := q.Pop()
 	if err != nil {
 		return nil, err
@@ -83,12 +103,17 @@ func (q *FifoQueue) PopWait() (*Item, error) {
 	return item, nil
 }
 
-func (q *FifoQueue) openIndexFile() (*os.File, error) {
-	path := filepath.Join(IndexFilePath, q.Name)
+func (q *Queue) openIndexFile() (*os.File, error) {
+	path := filepath.Join(q.filePrefix, fmt.Sprintf("%d.idx", q.beginSeq))
 	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 }
 
-func (q *FifoQueue) FillIndex(fillCount uint64) error {
+func (q *Queue) openDataFile() (*os.File, error) {
+	path := filepath.Join(q.filePrefix, fmt.Sprintf("%d.dat", q.beginSeq))
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+}
+
+func (q *Queue) FillIndex(fillCount uint64) error {
 	if fillCount == 0 {
 		return nil
 	}
@@ -127,7 +152,7 @@ func (q *FifoQueue) FillIndex(fillCount uint64) error {
 	}
 	return nil
 }
-func (q *FifoQueue) FillData(item *Item) error {
+func (q *Queue) FillData(item *Item) error {
 	d := q.dataFile
 	if d == nil {
 		return errors.New("file not opened")
@@ -151,26 +176,46 @@ func (q *FifoQueue) FillData(item *Item) error {
 	return item.FillData(dataBuf)
 }
 
-func (q *FifoQueue) Close() {
+func (q *Queue) Close() {
 
 }
 
 type QueueGroup struct {
-	partitionNum int
+	baseDir      string
+	partitions   int
 	queueMaxSize uint64
-	consumeIdx   int
-	queueList    []*FifoQueue
+	queueCursor  int
+	queueList    []*Queue
 	tk           *time.Ticker
-	closeChan    chan bool
+	closeChan    chan struct{}
 }
 
-func (g *QueueGroup) Init(queueCount int) {
+func NewQueueGroup(namespace, topic string, partitions int) (*QueueGroup, error) {
+	dir := filepath.Join(config.GlobalCfg.Broker.BasePath, namespace, topic)
+	group := QueueGroup{
+		baseDir:      dir,
+		partitions:   partitions,
+		queueMaxSize: config.GlobalCfg.Broker.QueueMaxSize,
+		queueCursor:  0,
+	}
+	err := group.Init(partitions)
+	if err != nil {
+		return nil, err
+	}
+	return &group, nil
+}
+
+func (g *QueueGroup) Init(queueCount int) error {
+	g.closeChan = make(chan struct{}, 1)
 	g.tk = time.NewTicker(time.Second * 5)
 	for i := 0; i < queueCount; i++ {
-		q := NewFifoQueue()
+		q, err := NewQueue(g.baseDir, strconv.FormatInt(int64(i), 10))
+		if err != nil {
+			return err
+		}
 		g.queueList = append(g.queueList, q)
 	}
-
+	return nil
 }
 
 func (g *QueueGroup) IoLoop() {
@@ -187,13 +232,12 @@ func (g *QueueGroup) IoLoop() {
 			}
 		case <-g.closeChan:
 			return
-
 		}
 	}
 }
 
 func (g *QueueGroup) Close() {
-	g.closeChan <- true
+	g.closeChan <- struct{}{}
 	for _, queue := range g.queueList {
 		queue.Close()
 	}
@@ -201,18 +245,18 @@ func (g *QueueGroup) Close() {
 
 func (g *QueueGroup) SequentialRead() (*Item, error) {
 	defer func() {
-		if g.consumeIdx+1 < g.partitionNum {
-			g.consumeIdx++
+		if g.queueCursor+1 < g.partitions {
+			g.queueCursor++
 		} else {
-			g.consumeIdx = 0
+			g.queueCursor = 0
 		}
 	}()
-	q := g.queueList[g.consumeIdx]
+	q := g.queueList[g.queueCursor]
 	return q.PopWait()
 }
 
 func (g *QueueGroup) SpecifyRead(partition int) (*Item, error) {
-	if partition+1 > g.partitionNum {
+	if partition+1 > g.partitions {
 		return nil, fmt.Errorf("partition [%d] out of range", partition)
 	}
 	q := g.queueList[partition]

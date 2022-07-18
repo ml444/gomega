@@ -45,7 +45,7 @@ type SubConfig struct {
 
 func (s *SubConfig) Init() {
 	//s.Id = s.GenerateId()
-	//s.IGroup = GetGroup(s.Type)
+	//s.IGroup = NewConsumeGroup(s.Type)
 }
 
 func (s *SubConfig) GenerateId() string {

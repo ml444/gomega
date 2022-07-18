@@ -2,32 +2,39 @@ package topic
 
 import (
 	"errors"
-	"fmt"
+	"strings"
 	"sync"
 )
 
+var Mgr *Manager
+func init() {
+	Mgr = &Manager{
+		topicMap: map[string]*Topic{},
+		mu:       sync.RWMutex{},
+	}
+}
 type Manager struct {
-	m  map[string]*Topic
-	mu sync.RWMutex
+	topicMap map[string]*Topic
+	//workerMap map[string]*subscribe.Worker
+	mu       sync.RWMutex
 }
 
-var topicMgr *Manager
 
-func (*Manager) checkNaming(name string) error {
-	l := len(name)
-	if l == 0 {
-		return errors.New("name is empty")
+
+
+func (m *Manager) GetTopic(namespace, topicName string) (*Topic, error) {
+	if t, ok := m.topicMap[strings.Join([]string{namespace, topicName}, ".")]; ok {
+		return t, nil
 	}
-	if l > 64 {
-		return fmt.Errorf( "the length of the name[%s] is greater than 64", name)
-	}
-	for i := 0; i < l; i++ {
-		if name[i] == '.' || name[i] == '/' {
-			return fmt.Errorf("name[%s] has invalid char", name)
-		}
-	}
-	return nil
+	return nil, errors.New("not found topic")
 }
+
+//func (m *Manager) GetWorker(token string) (*subscribe.Worker, error){
+//	if worker, ok := m.workerMap[token]; ok {
+//		return worker, nil
+//	}
+//	return nil, errors.New("not found worker")
+//}
 
 func TODO() {
 	// 根据Topic本身的优先级，选择一个合适的服务节点，更新etcd

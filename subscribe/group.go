@@ -1,6 +1,7 @@
 package subscribe
 
 import (
+	"errors"
 	"fmt"
 	log "github.com/ml444/glog"
 	"github.com/ml444/scheduler/brokers"
@@ -16,14 +17,14 @@ type IGroup interface {
 	AddWorker(name string) *Worker
 }
 
-func GetGroup(policy pb.Policy, cfg *SubConfig) IGroup {
+func NewConsumeGroup(policy pb.Policy, cfg *SubConfig, partitions int) (IGroup, error) {
 	switch policy {
 	case pb.Policy_PolicyConcurrence:
-		return NewConcurrentConsume(cfg)
+		return NewConcurrentConsume(cfg, partitions)
 	case pb.Policy_PolicySerial:
-		return NewSerialConsume(cfg)
+		return NewSerialConsume(cfg, partitions)
 	default:
-		return NewConcurrentConsume(cfg)
+		return NewConcurrentConsume(cfg, partitions)
 	}
 }
 
@@ -40,10 +41,18 @@ type ConcurrentGroup struct {
 	isExist     bool
 }
 
-func NewConcurrentConsume(cfg *SubConfig) *ConcurrentGroup {
+func NewConcurrentConsume(cfg *SubConfig, partitions int) (*ConcurrentGroup, error) {
+	if cfg == nil {
+		return nil, errors.New("subscriber config is nil")
+	}
+	var err error
 	c := ConcurrentGroup{cfg: cfg}
+	c.queueGroup, err = brokers.NewQueueGroup(cfg.Namespace, cfg.Topic, partitions)
+	if err != nil {
+		return nil, err
+	}
 	c.init()
-	return &c
+	return &c, nil
 }
 
 func (c *ConcurrentGroup) init() {
@@ -144,8 +153,8 @@ type SerialGroup struct {
 	isExist     bool
 }
 
-func NewSerialConsume(cfg *SubConfig) *SerialGroup {
-	return &SerialGroup{
+func NewSerialConsume(cfg *SubConfig, partitions int) (*SerialGroup, error) {
+	g := SerialGroup{
 		cfg:         cfg,
 		wg:          sync.WaitGroup{},
 		heapMap:     nil,
@@ -154,6 +163,12 @@ func NewSerialConsume(cfg *SubConfig) *SerialGroup {
 		retryList:   nil,
 		workerCount: 0,
 	}
+	var err error
+	g.queueGroup, err = brokers.NewQueueGroup(cfg.Namespace, cfg.Topic, partitions)
+	if err != nil {
+		return nil, err
+	}
+	return &g, nil
 }
 
 func (c *SerialGroup) init() {

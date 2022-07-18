@@ -34,7 +34,7 @@ func (r *rsp) ProtoMessage()  {}
 func TestSubscriber_NewResponse(t *testing.T) {
 
 	type fields struct {
-		Name          string
+		filePreffix          string
 		Topic         string
 		Route         string
 		Addrs         []string
@@ -68,7 +68,7 @@ func TestSubscriber_NewResponse(t *testing.T) {
 }
 
 type req struct {
-	Name string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	filePreffix string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
 	Age  uint32 `protobuf:"varint,2,opt,name=age" json:"age,omitempty"`
 }
 
@@ -77,14 +77,14 @@ func (r *req) String() string { return "" }
 func (r *req) ProtoMessage()  {}
 func TestSubscriber_UnMarshalRequest(t *testing.T) {
 
-	r := &req{Name: "bar", Age: 456}
+	r := &req{filePreffix: "bar", Age: 456}
 	bb, err := proto.Marshal(r)
 	if err != nil {
 		return
 	}
 	//t.Log(len(bb))
 	type fields struct {
-		Name          string
+		filePreffix          string
 		Topic         string
 		Route         string
 		Addrs         []string
@@ -115,7 +115,7 @@ func TestSubscriber_UnMarshalRequest(t *testing.T) {
 			//args: args{data: []byte(`{"name": "bar", "age": 456}`)},
 			args: args{data: bb},
 			want: &req{
-				Name: "bar",
+				filePreffix: "bar",
 				Age:  456,
 			},
 			wantErr: false,
@@ -124,7 +124,7 @@ func TestSubscriber_UnMarshalRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &SubConfig{
-				Id:            tt.fields.Name,
+				Id:            tt.fields.filePreffix,
 				Topic:         tt.fields.Topic,
 				Route:         tt.fields.Route,
 				Addrs:         tt.fields.Addrs,

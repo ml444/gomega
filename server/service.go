@@ -9,6 +9,7 @@ import (
 	"github.com/ml444/scheduler/pb"
 	"github.com/ml444/scheduler/publish"
 	"github.com/ml444/scheduler/subscribe"
+	"github.com/ml444/scheduler/topic"
 	"google.golang.org/grpc"
 	"io"
 	"net"
@@ -59,9 +60,11 @@ func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, erro
 	//	ItemLifetimeInQueue: req.ItemLifetimeIn_Queue,
 	//}
 	//cfg.Init()
-	cfgKey := subscribe.GetSubCfgName(req.Namespace, req.Topic, req.Group)
-	mgr := subscribe.SubMgr
-	if c := mgr.GetSubCfg(cfgKey); c == nil {
+	topicIns, err := topic.Mgr.GetTopic(req.Namespace, req.Topic)
+	if err != nil {
+		return nil, err
+	}
+	if c := topicIns.GetSubCfg(req.Group); c == nil {
 		cfg := subscribe.SubConfig{
 			Type:                req.Policy,
 			Namespace:           req.Namespace,
@@ -72,10 +75,13 @@ func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, erro
 			RetryIntervalMs:     config.DefaultRetryIntervalMs,
 			ItemLifetimeInQueue: config.DefaultItemLifetimeInQueue,
 		}
-		mgr.AddSubCfg(&cfg)
+		topicIns.AddSubCfg(&cfg)
 	}
 	rsp.Status = 10000
-	rsp.Token = mgr.GetToken(cfgKey)
+	rsp.Token, err = topicIns.GetToken(req.Group)
+	if err != nil {
+		return nil, err
+	}
 	//{
 	//	// test
 	//	item := &brokers.Item{
@@ -94,7 +100,7 @@ func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, erro
 	//		DelayValue: 0,
 	//	}
 	//	consumeRsp := call.ConsumeRsp{}
-	//	worker := subscribe.Worker{S: &cfg, Cfg: &subscribe.Config{MaxExecTimeSeconds: 123}}
+	//	worker := subscribe.Worker{S: &cfg, GlobalCfg: &subscribe.Config{MaxExecTimeSeconds: 123}}
 	//	err := worker.ConsumeMsg(item, &payload, &consumeRsp)
 	//	if err != nil {
 	//		println(err)
@@ -105,24 +111,26 @@ func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, erro
 
 func (s *OmegaServer) Consume(stream pb.OmegaService_ConsumeServer) error {
 	// get worker
-	mgr := subscribe.SubMgr
-	for{
-		req, err := stream.Recv()
-		if err == io.EOF {
-			return nil
+	req, err := stream.Recv()
+	if err == io.EOF {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if req.Token != "" {
+		fmt.Println(req.Token)
+		topicIns, err := topic.Mgr.GetTopic(req.Namespace, req.Topic)
+		if err != nil {
+			return errors.New("not found topic")
 		}
+		worker, err := topicIns.GetWorker(req.Topic)
 		if err != nil {
 			return err
 		}
-		if req.Token != "" {
-			fmt.Println(req.Token)
-			worker := mgr.GetWorker(req.Token)
-			if worker == nil {
-				return errors.New("not found worker")
-			}
-			return worker.Run(req, stream)
-		}
+		return worker.Run(req, stream)
 	}
+	return errors.New("token must be not null")
 }
 
 func RunServer() error {

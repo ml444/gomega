@@ -1,21 +1,23 @@
-package topic
+package topics
 
 import (
 	"errors"
 	"fmt"
+	"github.com/ml444/scheduler/config"
 	"github.com/ml444/scheduler/subscribe"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"sync"
+	"syscall"
 )
-
-
 
 type Topic struct {
 	Namespace  string
 	Name       string
-	Partitions int
-	Priority uint32
-
+	Partitions uint32
+	Priority   uint32
 
 	subCfgMap map[string]*subscribe.SubConfig
 	groupMap  map[string]subscribe.IGroup
@@ -23,28 +25,37 @@ type Topic struct {
 	mu        sync.RWMutex
 }
 
-
-
-func NewTopic(namespace, topicName string, partitions int, priority uint32) (*Topic, error) {
+func NewTopic(namespace, topicName string, partitions uint32, priority uint32) (*Topic, error) {
 	var err error
 	err = checkNaming(namespace)
 	if err != nil {
 		return nil, err
 	}
 	err = checkNaming(topicName)
-	if err !=nil {
+	if err != nil {
 		return nil, err
 	}
+	for i:=uint32(0); i< partitions; i++ {
+		err = makeDir(namespace, topicName, i)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &Topic{
-		Namespace: namespace,
-		Name: topicName,
+		Namespace:  namespace,
+		Name:       topicName,
 		Partitions: partitions,
-		Priority: priority,
-		subCfgMap: map[string]*subscribe.SubConfig{},
-		groupMap: map[string]subscribe.IGroup{},
-		workerMap: map[string]*subscribe.Worker{},
-		mu:        sync.RWMutex{},
+		Priority:   priority,
+		subCfgMap:  map[string]*subscribe.SubConfig{},
+		groupMap:   map[string]subscribe.IGroup{},
+		workerMap:  map[string]*subscribe.Worker{},
+		mu:         sync.RWMutex{},
 	}, nil
+}
+
+func makeDir(namespace, topic string, partition uint32) error {
+	syscall.Umask(0)
+	return os.MkdirAll(filepath.Join(config.GlobalCfg.Broker.BasePath,namespace, topic, strconv.FormatUint(uint64(partition), 10)), 0777)
 }
 
 func checkNaming(name string) error {
@@ -53,7 +64,7 @@ func checkNaming(name string) error {
 		return errors.New("name is empty")
 	}
 	if l > 64 {
-		return fmt.Errorf( "the length of the name[%s] is greater than 64", name)
+		return fmt.Errorf("the length of the name[%s] is greater than 64", name)
 	}
 	for i := 0; i < l; i++ {
 		if name[i] == '.' || name[i] == '/' {
@@ -134,4 +145,3 @@ func (t *Topic) GetWorker(token string) (*subscribe.Worker, error) {
 	}
 	return nil, errors.New("not found worker")
 }
-

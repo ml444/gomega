@@ -2,6 +2,7 @@ package alpha
 
 import (
 	"context"
+	log "github.com/ml444/glog"
 	"io"
 	"time"
 )
@@ -46,12 +47,12 @@ func LoopConsume(handler func (r *ConsumeRsp) error) error {
 			return nil
 		}
 		if err != nil {
-			println(err)
+			log.Error(err)
 			return err
 		}
 		err = handler(rsp)
 		if err != nil {
-			println(err)
+			log.Error(err)
 			return err
 		}
 		req.Sequence++

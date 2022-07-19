@@ -25,7 +25,7 @@ func Init() {
 func Pub(ctx context.Context, req *PubReq) (*PubRsp, error) {
 	var err error
 	var rsp PubRsp
-	Init()
+	//Init()
 	//return cli.Pub(ctx, req)
 	err = conn.Invoke(ctx, "/omega.OmegaService/Pub", req, &rsp)
 	if err != nil {

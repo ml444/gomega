@@ -4,8 +4,12 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/ml444/glog"
+	"github.com/ml444/scheduler/config"
 	"os"
+	"path/filepath"
+	"strconv"
 )
+
 /*
 {
 	"127.0.0.1:9091": {
@@ -21,7 +25,7 @@ import (
 		}
 	}
 }
- */
+*/
 type IBackendReader interface {
 	Read()
 }
@@ -37,26 +41,17 @@ func InitBroker() {
 	if brokerMap == nil {
 		brokerMap = map[string]*Broker{}
 	}
-	defaultBroker := &Broker{
-		namespace: "default",
-		topic:     "default",
-		partition: 0,
-		sequence:  0,
-		idxFile:   nil,
-		dataFile:  nil,
-		itemChan:  make(chan *Item, 1024),
-		exitChan:  make(chan bool, 1),
-	}
-	go defaultBroker.ioLoop()
-	brokerMap["default"] = defaultBroker
 }
 
-func GetBrokerByTopicName(namespace, topic string) (*Broker, error) {
-	key := fmt.Sprintf("%s:%s", namespace, topic)
+func GetBroker(namespace, topic string, partition uint32) (*Broker, error) {
+	key := fmt.Sprintf("%s:%s:%d", namespace, topic, partition)
 	broker, ok := brokerMap[key]
 	if !ok {
-		broker = brokerMap["default"]
+		broker = NewBroker(namespace, topic, partition)
+		// TODO goroutine
+		go broker.ioLoop()
 		if broker != nil {
+			brokerMap[key] = broker
 			return broker, nil
 		}
 		return nil, errors.New("not found broker")
@@ -65,16 +60,30 @@ func GetBrokerByTopicName(namespace, topic string) (*Broker, error) {
 }
 
 type Broker struct {
-	namespace string
-	topic     string
-	partition int
+	//namespace string
+	//topic     string
+	//partition uint32
 	sequence  uint64
 
+	fileDir  string
 	idxFile  *os.File
 	dataFile *os.File
 
 	itemChan chan *Item
 	exitChan chan bool
+}
+
+func NewBroker(namespace, topic string, partition uint32) *Broker {
+	return &Broker{
+		//partition: partition,
+		sequence:  0,
+		fileDir:   filepath.Join(config.GlobalCfg.Broker.BasePath, namespace, topic, strconv.FormatUint(uint64(partition), 10)),
+		//idxFile:   nil,
+		//dataFile:  nil,
+		itemChan:  make(chan *Item, 1024),
+		exitChan:  make(chan bool, 1),
+
+	}
 }
 
 func (b *Broker) getNextSequence() uint64 {
@@ -84,8 +93,8 @@ func (b *Broker) getNextSequence() uint64 {
 }
 
 func (b *Broker) getIdxFile() (*os.File, error) {
-	filename := fmt.Sprintf("%s.%s.%d.%d.idx", b.namespace, b.topic, b.partition, b.sequence)
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	path := filepath.Join(b.fileDir, fmt.Sprintf("%d.idx", b.sequence))
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +102,8 @@ func (b *Broker) getIdxFile() (*os.File, error) {
 }
 
 func (b *Broker) getDataFile() (*os.File, error) {
-	filename := fmt.Sprintf("%s.%s.%d.%d.dat", b.namespace, b.topic, b.partition, b.sequence)
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	path := filepath.Join(b.fileDir, fmt.Sprintf("%d.dat", b.sequence))
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +160,7 @@ func (b *Broker) Flush(itemList []*Item, dataSize int) {
 		item.Marshal2Data(dataBufSlice)
 		begin = end
 	}
-
+	fmt.Println("===> ", b.fileDir)
 	{
 		if b.dataFile == nil {
 			b.dataFile, err = b.getDataFile()

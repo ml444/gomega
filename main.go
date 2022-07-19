@@ -8,6 +8,7 @@ import (
 )
 
 func main() {
+	log.InitLog()
 	// get server config
 	// start some broker
 	brokers.InitBroker()

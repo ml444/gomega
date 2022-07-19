@@ -21,12 +21,12 @@ type PubReq struct {
 	Priority uint32 `protobuf:"varint,32,opt,name=priority" json:"priority,omitempty"`
 }
 
-func Pub(ctx *context.Context, namespace, topic string, item *brokers.Item) error {
+func Pub(ctx context.Context, namespace, topic string, partition uint32, item *brokers.Item) error {
 	if namespace == "" {
 		namespace = config.DefaultNamespace
 	}
 	// file sequence offset
-	bk, err := brokers.GetBrokerByTopicName(namespace, topic)
+	bk, err := brokers.GetBroker(namespace, topic, partition)
 	if err != nil {
 		return err
 	}

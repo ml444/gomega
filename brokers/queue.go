@@ -43,7 +43,7 @@ func NewQueue(baseDir string, parentPath string) (*Queue, error) {
 		filePrefix: filepath.Join(baseDir, parentPath),
 		cursor:   0,
 		offset:   0,
-		beginSeq: 0,
+		beginSeq: 1,
 		endSeq:   0,
 		items:    nil,
 		//indexFile: nil,
@@ -181,16 +181,16 @@ func (q *Queue) Close() {
 }
 
 type QueueGroup struct {
-	baseDir      string
-	partitions   int
+	partitions   uint32
+	queueCursor  uint32
 	queueMaxSize uint64
-	queueCursor  int
 	queueList    []*Queue
 	tk           *time.Ticker
 	closeChan    chan struct{}
+	baseDir      string
 }
 
-func NewQueueGroup(namespace, topic string, partitions int) (*QueueGroup, error) {
+func NewQueueGroup(namespace, topic string, partitions uint32) (*QueueGroup, error) {
 	dir := filepath.Join(config.GlobalCfg.Broker.BasePath, namespace, topic)
 	group := QueueGroup{
 		baseDir:      dir,
@@ -198,7 +198,7 @@ func NewQueueGroup(namespace, topic string, partitions int) (*QueueGroup, error)
 		queueMaxSize: config.GlobalCfg.Broker.QueueMaxSize,
 		queueCursor:  0,
 	}
-	err := group.Init(partitions)
+	err := group.Init(int(partitions))
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,7 @@ func (g *QueueGroup) SequentialRead() (*Item, error) {
 }
 
 func (g *QueueGroup) SpecifyRead(partition int) (*Item, error) {
-	if partition+1 > g.partitions {
+	if partition+1 > int(g.partitions) {
 		return nil, fmt.Errorf("partition [%d] out of range", partition)
 	}
 	q := g.queueList[partition]

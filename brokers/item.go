@@ -47,7 +47,7 @@ type Item struct {
 	Priority   uint32
 	Data       []byte
 
-	Namespace string
+	//Namespace string
 }
 
 func (i *Item) FillIndex(buf []byte) error {

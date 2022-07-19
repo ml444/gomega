@@ -9,9 +9,10 @@ import (
 	"github.com/ml444/scheduler/pb"
 	"github.com/ml444/scheduler/publish"
 	"github.com/ml444/scheduler/subscribe"
-	"github.com/ml444/scheduler/topic"
+	"github.com/ml444/scheduler/topics"
 	"google.golang.org/grpc"
 	"io"
+	"math/rand"
 	"net"
 	"time"
 )
@@ -20,47 +21,65 @@ type OmegaServer struct {
 	pb.UnimplementedOmegaServiceServer
 }
 
+func (s *OmegaServer) AddTopic(ctx context.Context, req *pb.Topic) (*pb.Response, error) {
+	var rsp pb.Response
+	topic, err := topics.NewTopic(req.Namespace, req.TopicName, req.Partitions, req.Priority)
+	if err != nil {
+		return nil, err
+	}
+	topics.AddTopic(topic)
+	return &rsp, nil
+}
+
+func generateRandomHashCode() uint64 {
+	return rand.Uint64()
+}
+
 func (s *OmegaServer) Pub(ctx context.Context, req *pb.PubReq) (*pb.PubRsp, error) {
 	var rsp pb.PubRsp
-	fmt.Println(req)
+	//fmt.Println(req)
 
 	dataSize := len(req.Data)
 	if dataSize > config.MaxDataSize {
 		return nil, errors.New("data length exceeds limit")
 	}
+	partition := req.Partition
+	hashCode := req.HashCode
+	if hashCode > 0 {
+		partitionCount, err := topics.GetTopicPartitionCount(req.Namespace, req.TopicName)
+		if err != nil {
+			return nil, err
+		}
+		// TODO
+		partition = uint32(hashCode % uint64(partitionCount))
+	} else {
+		// TODO generate hashCode
+		hashCode = generateRandomHashCode()
+	}
 	item := brokers.Item{
 		CreatedAt: uint32(time.Now().Unix()),
-		HashCode:  req.HashCode,
-		Partition: req.Partition,
+		HashCode:  hashCode,
+		Partition: partition,
 		Size:      uint32(dataSize),
 		//DelayType:  req.DelayType,
 		//DelayValue: req.DelayValue,
 		//Priority:   req.Priority,
 		Data:      req.Data,
-		Namespace: req.Namespace,
+		//Namespace: req.Namespace,
 	}
 
-	err := publish.Pub(&ctx, req.Namespace, req.TopicName, &item)
+	err := publish.Pub(ctx, req.Namespace, req.TopicName, partition, &item)
 	if err != nil {
 		return nil, err
 	}
+	rsp.Status = 10000
 	return &rsp, nil
 }
 
 func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, error) {
 	var rsp pb.SubRsp
 	fmt.Println("====> Subscribe", req.ClientId, "===")
-	//cfg := subscribe.SubConfig{
-	//	Namespace:           req.Namespace,
-	//	Topic:               req.Topic,
-	//	GroupName:           req.Group,
-	//	MaxRetryCount:       req.MaxRetryCount,
-	//	MaxTimeout:          req.MaxTimeout,
-	//	RetryIntervalMs:     req.RetryIntervalMs,
-	//	ItemLifetimeInQueue: req.ItemLifetimeIn_Queue,
-	//}
-	//cfg.Init()
-	topicIns, err := topic.Mgr.GetTopic(req.Namespace, req.Topic)
+	topicIns, err := topics.GetTopic(req.Namespace, req.Topic)
 	if err != nil {
 		return nil, err
 	}
@@ -82,30 +101,6 @@ func (s *OmegaServer) Sub(ctx context.Context, req *pb.SubReq) (*pb.SubRsp, erro
 	if err != nil {
 		return nil, err
 	}
-	//{
-	//	// test
-	//	item := &brokers.Item{
-	//		Sequence:   1,
-	//		HashCode:   1234,
-	//		CreatedAt:  123,
-	//		Partition:  0,
-	//		Offset:     1,
-	//		Size:       0,
-	//		RetryCount: 0,
-	//	}
-	//	payload := brokers.MsgPayload{
-	//		MsgId:      "124560",
-	//		Data:       []byte(`{"Latitude": 409146138, "Longitude": -746188906}`),
-	//		DelayType:  0,
-	//		DelayValue: 0,
-	//	}
-	//	consumeRsp := call.ConsumeRsp{}
-	//	worker := subscribe.Worker{S: &cfg, GlobalCfg: &subscribe.Config{MaxExecTimeSeconds: 123}}
-	//	err := worker.ConsumeMsg(item, &payload, &consumeRsp)
-	//	if err != nil {
-	//		println(err)
-	//	}
-	//}
 	return &rsp, nil
 }
 
@@ -120,11 +115,11 @@ func (s *OmegaServer) Consume(stream pb.OmegaService_ConsumeServer) error {
 	}
 	if req.Token != "" {
 		fmt.Println(req.Token)
-		topicIns, err := topic.Mgr.GetTopic(req.Namespace, req.Topic)
+		topicIns, err := topics.GetTopic(req.Namespace, req.Topic)
 		if err != nil {
-			return errors.New("not found topic")
+			return errors.New("not found topics")
 		}
-		worker, err := topicIns.GetWorker(req.Topic)
+		worker, err := topicIns.GetWorker(req.Token)
 		if err != nil {
 			return err
 		}

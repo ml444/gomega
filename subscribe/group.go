@@ -17,7 +17,7 @@ type IGroup interface {
 	AddWorker(name string) *Worker
 }
 
-func NewConsumeGroup(policy pb.Policy, cfg *SubConfig, partitions int) (IGroup, error) {
+func NewConsumeGroup(policy pb.Policy, cfg *SubConfig, partitions uint32) (IGroup, error) {
 	switch policy {
 	case pb.Policy_PolicyConcurrence:
 		return NewConcurrentConsume(cfg, partitions)
@@ -41,7 +41,7 @@ type ConcurrentGroup struct {
 	isExist     bool
 }
 
-func NewConcurrentConsume(cfg *SubConfig, partitions int) (*ConcurrentGroup, error) {
+func NewConcurrentConsume(cfg *SubConfig, partitions uint32) (*ConcurrentGroup, error) {
 	if cfg == nil {
 		return nil, errors.New("subscriber config is nil")
 	}
@@ -83,31 +83,29 @@ func (c *ConcurrentGroup) Start() {
 			c.msgChan <- msg.Value.(*brokers.Item)
 		}
 	}
-	var testSeq uint64
+	//var testSeq uint64
 	for {
-		//item, err := c.queueGroup.SequentialRead()
-		//if err != nil {
-		//	log.Error(err)
-		//	continue
-		//}
-		//if item == nil {
-		//	continue
-		//}
-		testSeq++
-		item := &brokers.Item{
-			Sequence:   testSeq,
-			HashCode:   testSeq,
-			CreatedAt:  0,
-			Partition:  0,
-			Offset:     0,
-			Size:       0,
-			RetryCount: 0,
-			DelayType:  0,
-			DelayValue: 0,
-			Priority:   0,
-			Data:       []byte("wahaha"),
-			Namespace:  "default",
+		item, err := c.queueGroup.SequentialRead()
+		if err != nil {
+			log.Error(err)
+			continue
 		}
+		if item == nil {
+			continue
+		}
+		//testSeq++
+		//item := &brokers.Item{
+		//	Sequence:   testSeq,
+		//	HashCode:   testSeq,
+		//	CreatedAt:  0,
+		//	Offset:     0,
+		//	Size:       0,
+		//	RetryCount: 0,
+		//	DelayType:  0,
+		//	DelayValue: 0,
+		//	Priority:   0,
+		//	Data:       []byte("wahaha"),
+		//}
 		fmt.Println("===>", item.Sequence)
 		c.msgChan <- item
 	}
@@ -153,7 +151,7 @@ type SerialGroup struct {
 	isExist     bool
 }
 
-func NewSerialConsume(cfg *SubConfig, partitions int) (*SerialGroup, error) {
+func NewSerialConsume(cfg *SubConfig, partitions uint32) (*SerialGroup, error) {
 	g := SerialGroup{
 		cfg:         cfg,
 		wg:          sync.WaitGroup{},

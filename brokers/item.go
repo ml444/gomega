@@ -78,8 +78,8 @@ func (i *Item) FillData(dataBuf []byte) error {
 	ptr := dataBuf[:]
 	b := getEndian()
 	begMark := b.Uint16(ptr)
-	i.Data = ptr[2 : i.Size-2]
-	endMark := b.Uint16(ptr[i.Size-2:])
+	i.Data = ptr[2 : i.Size+2]
+	endMark := b.Uint16(ptr[i.Size+2:])
 	if begMark != itemBegin {
 		//q.dataCorruption = true
 		return errors.New("invalid data begin marker")

@@ -49,7 +49,7 @@ func NewQueue(baseDir string, parentPath string) (*Queue, error) {
 		//indexFile: nil,
 		//dataFile: nil,
 		//Len:          0,
-		MaxItemCount: 8192,
+		MaxItemCount: 1024,
 		MaxDataBytes: 64 * 1024 * 1024,
 	}
 	err := q.Init()
@@ -75,6 +75,7 @@ func (q *Queue) Init() error {
 }
 
 func (q *Queue) Push(item *Item) error {
+	q.items = append(q.items, item)
 	return nil
 }
 
@@ -105,12 +106,12 @@ func (q *Queue) PopWait() (*Item, error) {
 
 func (q *Queue) openIndexFile() (*os.File, error) {
 	path := filepath.Join(q.filePrefix, fmt.Sprintf("%d.idx", q.beginSeq))
-	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	return os.OpenFile(path, os.O_RDONLY|os.O_CREATE|os.O_APPEND, 0666)
 }
 
 func (q *Queue) openDataFile() (*os.File, error) {
 	path := filepath.Join(q.filePrefix, fmt.Sprintf("%d.dat", q.beginSeq))
-	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	return os.OpenFile(path, os.O_RDONLY|os.O_CREATE|os.O_APPEND, 0666)
 }
 
 func (q *Queue) FillIndex(fillCount uint64) error {
@@ -157,7 +158,7 @@ func (q *Queue) FillData(item *Item) error {
 	if d == nil {
 		return errors.New("file not opened")
 	}
-	dataBuf := make([]byte, item.Size)
+	dataBuf := make([]byte, item.Size+4)
 	var read uint32
 	for read < item.Size {
 		n, err := d.ReadAt(dataBuf[read:], int64(item.Offset)+int64(read))
@@ -215,6 +216,7 @@ func (g *QueueGroup) Init(queueCount int) error {
 		}
 		g.queueList = append(g.queueList, q)
 	}
+	go g.IoLoop()
 	return nil
 }
 

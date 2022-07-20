@@ -85,12 +85,14 @@ func (c *ConcurrentGroup) Start() {
 	}
 	//var testSeq uint64
 	for {
+		println("111111")
 		item, err := c.queueGroup.SequentialRead()
 		if err != nil {
 			log.Error(err)
 			continue
 		}
 		if item == nil {
+			println("22222")
 			continue
 		}
 		//testSeq++

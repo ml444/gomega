@@ -114,7 +114,6 @@ func (s *OmegaServer) Consume(stream pb.OmegaService_ConsumeServer) error {
 		return err
 	}
 	if req.Token != "" {
-		fmt.Println(req.Token)
 		topicIns, err := topics.GetTopic(req.Namespace, req.Topic)
 		if err != nil {
 			return errors.New("not found topics")

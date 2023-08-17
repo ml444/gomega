@@ -17,10 +17,6 @@ func Sub(ctx context.Context, req *omega.SubReq) (*omega.SubRsp, error) {
 }
 
 func LoopConsume(ctx context.Context, topic, group, clientId string, handler consumeFunc) error {
-	stream, err := cli.Consume(ctx)
-	if err != nil {
-		return err
-	}
 	subRsp, err := Sub(ctx, &omega.SubReq{
 		ClientId: clientId,
 		Topic:    topic,
@@ -36,14 +32,16 @@ func LoopConsume(ctx context.Context, topic, group, clientId string, handler con
 		Sequence: subRsp.Sequence,
 	}
 
+	stream, err := cli.Consume(ctx, &req)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 	for {
-		if err = stream.Send(&req); err != nil {
-			log.Error(err)
-			return err
-		}
 		rsp, err = stream.Recv()
 		if err == io.EOF {
-			return nil
+			log.Error(err)
+			break
 		}
 		if err != nil {
 			log.Error(err)
@@ -56,4 +54,6 @@ func LoopConsume(ctx context.Context, topic, group, clientId string, handler con
 		}
 		req.Sequence++
 	}
+	log.Warnf("%s LoopConsume exit", clientId)
+	return nil
 }

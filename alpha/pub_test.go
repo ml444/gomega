@@ -8,13 +8,25 @@ import (
 )
 
 func TestPub(t *testing.T) {
-	rsp, err := Pub(context.Background(), &omega.PubReq{
-		Topic:    "test_topic",
-		HashCode: 123456,
-		Data:     []byte("test1"),
-	})
-	if err != nil {
-		t.Error(err)
+	for i := 0; i < 10000; i++ {
+		_, err := Pub(context.Background(), &omega.PubReq{
+			Topic:    "test_topic",
+			HashCode: 123456,
+			Data:     []byte(`{"test": "balabala", "far": "away"}`),
+		})
+		if err != nil {
+			t.Error(err)
+		}
+		//time.Sleep(time.Millisecond * 10)
+		t.Log(i)
 	}
-	t.Log(rsp)
+	//rsp, err := Pub(context.Background(), &omega.PubReq{
+	//	Topic:    "test_topic",
+	//	HashCode: 123456,
+	//	Data:     []byte("test1"),
+	//})
+	//if err != nil {
+	//	t.Error(err)
+	//}
+	//t.Log(rsp)
 }

@@ -21,4 +21,4 @@ misc/
 
 #*_test.go
 go.sum
-config.json
+gomega_config.json

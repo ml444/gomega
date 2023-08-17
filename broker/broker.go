@@ -27,6 +27,13 @@ func InitBroker() {
 	workerMap = map[string]*Worker{}
 }
 
+func ExitBrokers() {
+	for _, broker := range brokerMap {
+		broker.Stop()
+	}
+	_ = config.FlushConfig()
+}
+
 func GetWorker(workerId string) *Worker {
 	mutex.RLock()
 	defer mutex.RUnlock()
@@ -75,19 +82,19 @@ func NewBroker(topic string) *Broker {
 	if !ok {
 		brokerCfg = &config.BrokerCfg{
 			QueueMaxSize:   config.DefaultQueueMaxSize,
-			PubCfg:         nil,
+			PubCfg:         &config.PubCfg{},
 			GroupSubCfgMap: map[string]*config.SubCfg{},
 		}
 		config.SetBrokerCfg(topic, brokerCfg)
 	} else {
 		itemChSize = brokerCfg.QueueMaxSize
 	}
-	fileDir := filepath.Join(config.GlobalCfg.RootPath, topic)
+	fileDir := filepath.Join(config.GetRootPath(), topic)
 	_ = os.MkdirAll(fileDir, 0755)
 	return &Broker{
 		cfg:            brokerCfg,
 		topic:          topic,
-		sequence:       0,
+		sequence:       brokerCfg.PubCfg.LastSequence,
 		fileDir:        fileDir,
 		itemChan:       make(chan *Item, itemChSize),
 		exitChan:       make(chan bool, 1),
@@ -96,7 +103,7 @@ func NewBroker(topic string) *Broker {
 	}
 }
 
-func (b *Broker) GetConsumeWorker(topic, group string, workerId string) *Worker {
+func (b *Broker) GetConsumeWorker(topic, group string, workerId string) (*Worker, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	workerGroup, ok := b.workerGroupMap[group]
@@ -113,10 +120,16 @@ func (b *Broker) GetConsumeWorker(topic, group string, workerId string) *Worker 
 			b.cfg.SetGroupSubCfg(group, cfg)
 		}
 		workerGroup = NewWorkerGroup(topic, cfg)
+
+		go func() {
+			err := workerGroup.Start() // TODO error
+			if err != nil {
+				log.Error(err)
+			}
+		}()
 		b.workerGroupMap[group] = workerGroup
-		go workerGroup.Start() // TODO error
 	}
-	return workerGroup.GetOrCreateWorker(workerId)
+	return workerGroup.GetOrCreateWorker(workerId), nil
 }
 
 func (b *Broker) getNextSequence() uint64 {
@@ -162,7 +175,9 @@ func (b *Broker) ioLoop() {
 					items = append(items, item)
 					size += len(item.Data)
 				default:
-					b.Flush(items, size)
+					if len(items) > 0 {
+						b.Flush(items, size)
+					}
 					done = true
 				}
 			}
@@ -173,6 +188,35 @@ func (b *Broker) ioLoop() {
 
 func (b *Broker) Flush(itemList []*Item, dataSize int) {
 	var err error
+	var lastFileSeq uint64
+	if b.dataFile == nil {
+		lastFileSeq, err = maxIdxFileName(b.fileDir)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		b.dataFile, err = getDataFile(b.fileDir, lastFileSeq)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+	}
+
+	if b.idxFile == nil {
+		if lastFileSeq == 0 {
+			lastFileSeq, err = maxIdxFileName(b.fileDir)
+			if err != nil {
+				log.Error(err)
+				return
+			}
+		}
+		b.idxFile, err = getIdxFile(b.fileDir, lastFileSeq)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		b.broadcastLastFileSequence(lastFileSeq)
+	}
 	itemsLen := len(itemList)
 	idxBufSize := itemsLen * indexItemSize
 	idxBuf := make([]byte, idxBufSize)
@@ -192,32 +236,32 @@ func (b *Broker) Flush(itemList []*Item, dataSize int) {
 	firstSeq := firstItem.Sequence
 	{
 		// ROTATE file
-		var size int64
-		size, err = b.dataFile.Seek(0, io.SeekEnd)
-		if err == nil && size+int64(len(dataBuf)) >= config.GlobalCfg.FileRotatorSize {
-			b.dataFile.Close()
-			b.dataFile = nil
-			b.idxFile.Close()
-			b.idxFile = nil
-			b.dataFile, err = getDataFile(b.fileDir, firstSeq)
-			if err != nil {
-				log.Error(err)
-				return
-			}
-			b.idxFile, err = getIdxFile(b.fileDir, firstSeq)
-			if err != nil {
-				log.Error(err)
-				return
+		{
+			var size int64
+			size, err = b.dataFile.Seek(0, io.SeekEnd)
+			if err == nil && size+int64(len(dataBuf)) >= config.GetFileRotatorSize() {
+				if b.idxFile != nil {
+					_ = b.idxFile.Close()
+					b.idxFile = nil
+				}
+				if b.dataFile != nil {
+					_ = b.dataFile.Close()
+					b.dataFile = nil
+				}
+				b.dataFile, err = getDataFile(b.fileDir, firstSeq)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				b.idxFile, err = getIdxFile(b.fileDir, firstSeq)
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				b.broadcastLastFileSequence(firstSeq)
 			}
 		}
 
-		if b.dataFile == nil {
-			b.dataFile, err = getDataFile(b.fileDir, firstSeq)
-			if err != nil {
-				log.Error(err)
-				return
-			}
-		}
 		var n, m int
 		n, err = b.dataFile.Write(dataBuf)
 		if err != nil {
@@ -234,13 +278,6 @@ func (b *Broker) Flush(itemList []*Item, dataSize int) {
 		}
 	}
 	{
-		if b.idxFile == nil {
-			b.idxFile, err = getIdxFile(b.fileDir, firstSeq)
-			if err != nil {
-				log.Error(err)
-				return
-			}
-		}
 		var n, m int
 		n, err = b.idxFile.Write(idxBuf)
 		if err != nil {
@@ -257,6 +294,11 @@ func (b *Broker) Flush(itemList []*Item, dataSize int) {
 		}
 	}
 }
+func (b *Broker) broadcastLastFileSequence(seq uint64) {
+	for _, workerGroup := range b.workerGroupMap {
+		workerGroup.SetLatestFileSequence(seq)
+	}
+}
 
 func (b *Broker) Stop() {
 	b.exitChan <- true
@@ -268,8 +310,10 @@ func (b *Broker) Stop() {
 		b.cfg.PubCfg = &config.PubCfg{Topic: b.topic}
 	}
 	b.cfg.PubCfg.LastSequence = b.sequence
-	b.cfg.PubCfg.LastFileSequence = getIdxFileSequence(b.idxFile.Name())
-	_ = config.FlushConfig()
+	if b.idxFile != nil {
+		b.cfg.PubCfg.LastFileSequence = getIdxFileSequence(b.idxFile.Name())
+	}
+	log.Info(b.topic, "last file sequence:", b.cfg.PubCfg.LastFileSequence)
 }
 
 func getIdxFileSequence(filename string) uint64 {

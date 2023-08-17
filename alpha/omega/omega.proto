@@ -10,7 +10,7 @@ service OmegaService {
     rpc Pub(PubReq) returns (Response) {}
     rpc Sub(SubReq) returns (SubRsp) {}
     rpc UpdateSubCfg(SubCfg) returns (Response) {}
-    rpc Consume(stream ConsumeReq) returns (stream ConsumeRsp) {}
+    rpc Consume(ConsumeReq) returns (stream ConsumeRsp) {}
 }
 enum DelayType {
     DelayTypeNone = 0;

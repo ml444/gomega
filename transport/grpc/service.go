@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"net"
 	"time"
@@ -29,7 +28,7 @@ func (s *OmegaServer) Pub(ctx context.Context, req *omega.PubReq) (*omega.Respon
 	var rsp omega.Response
 
 	dataSize := len(req.Data)
-	if dataSize > config.GlobalCfg.MaxMessageSize {
+	if dataSize > config.GetMaxMessageSize() {
 		return nil, errors.New("data length exceeds limit")
 	}
 	hashCode := req.HashCode
@@ -64,21 +63,18 @@ func (s *OmegaServer) Sub(ctx context.Context, req *omega.SubReq) (*omega.SubRsp
 	}
 	log.Infof("Subscribe: Topic: %s, Group: %s, ClientId: %s", req.Topic, req.Group, req.ClientId)
 	b := broker.GetOrCreateBroker(req.Topic)
-	worker := b.GetConsumeWorker(req.Topic, req.Group, req.ClientId)
+	worker, err := b.GetConsumeWorker(req.Topic, req.Group, req.ClientId)
+	if err != nil {
+		log.Errorf("err: %v", err)
+		return nil, err
+	}
 	broker.SetWorker(req.ClientId, worker)
 	rsp.Status = 1000
 	rsp.Token = req.ClientId
 	return &rsp, nil
 }
 
-func (s *OmegaServer) Consume(stream omega.OmegaService_ConsumeServer) error {
-	req, err := stream.Recv()
-	if err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
+func (s *OmegaServer) Consume(req *omega.ConsumeReq, stream omega.OmegaService_ConsumeServer) error {
 	if req.Token == "" {
 		return errors.New("token must be not empty")
 	}
@@ -89,19 +85,22 @@ func (s *OmegaServer) Consume(stream omega.OmegaService_ConsumeServer) error {
 	for !exit {
 		select {
 		case <-stream.Context().Done():
+			log.Warnf("Consume: Token: %s, Context Done", req.Token)
 			return nil
 		default:
 		}
 		item := worker.NextItem(&exit)
+		time.Sleep(time.Millisecond * 1)
 		if item == nil {
 			return errors.New("item is nil")
 		}
 		log.Debugf("Consume: Token: %s, Item: %v", req.Token, item)
-		err = stream.Send(&omega.ConsumeRsp{
+		err := stream.Send(&omega.ConsumeRsp{
 			Sequence: item.Sequence,
 			Data:     item.Data,
 		})
 		if err != nil {
+			log.Errorf("err: %v", err)
 			return err
 		}
 
@@ -129,7 +128,7 @@ func (s *OmegaServer) UpdateSubCfg(ctx context.Context, req *omega.SubCfg) (*ome
 	return &rsp, nil
 }
 func RunServer() error {
-	listen, err := net.Listen("tcp", ":12345")
+	listen, err := net.Listen(config.GetGRPCServerNetworkAndAddress())
 	if err != nil {
 		return err
 	}

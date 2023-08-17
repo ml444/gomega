@@ -25,7 +25,7 @@ type OmegaServiceClient interface {
 	Pub(ctx context.Context, in *PubReq, opts ...grpc.CallOption) (*Response, error)
 	Sub(ctx context.Context, in *SubReq, opts ...grpc.CallOption) (*SubRsp, error)
 	UpdateSubCfg(ctx context.Context, in *SubCfg, opts ...grpc.CallOption) (*Response, error)
-	Consume(ctx context.Context, opts ...grpc.CallOption) (OmegaService_ConsumeClient, error)
+	Consume(ctx context.Context, in *ConsumeReq, opts ...grpc.CallOption) (OmegaService_ConsumeClient, error)
 }
 
 type omegaServiceClient struct {
@@ -63,27 +63,28 @@ func (c *omegaServiceClient) UpdateSubCfg(ctx context.Context, in *SubCfg, opts 
 	return out, nil
 }
 
-func (c *omegaServiceClient) Consume(ctx context.Context, opts ...grpc.CallOption) (OmegaService_ConsumeClient, error) {
+func (c *omegaServiceClient) Consume(ctx context.Context, in *ConsumeReq, opts ...grpc.CallOption) (OmegaService_ConsumeClient, error) {
 	stream, err := c.cc.NewStream(ctx, &OmegaService_ServiceDesc.Streams[0], "/omega.OmegaService/Consume", opts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &omegaServiceConsumeClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
 	return x, nil
 }
 
 type OmegaService_ConsumeClient interface {
-	Send(*ConsumeReq) error
 	Recv() (*ConsumeRsp, error)
 	grpc.ClientStream
 }
 
 type omegaServiceConsumeClient struct {
 	grpc.ClientStream
-}
-
-func (x *omegaServiceConsumeClient) Send(m *ConsumeReq) error {
-	return x.ClientStream.SendMsg(m)
 }
 
 func (x *omegaServiceConsumeClient) Recv() (*ConsumeRsp, error) {
@@ -101,7 +102,7 @@ type OmegaServiceServer interface {
 	Pub(context.Context, *PubReq) (*Response, error)
 	Sub(context.Context, *SubReq) (*SubRsp, error)
 	UpdateSubCfg(context.Context, *SubCfg) (*Response, error)
-	Consume(OmegaService_ConsumeServer) error
+	Consume(*ConsumeReq, OmegaService_ConsumeServer) error
 	mustEmbedUnimplementedOmegaServiceServer()
 }
 
@@ -118,7 +119,7 @@ func (UnimplementedOmegaServiceServer) Sub(context.Context, *SubReq) (*SubRsp, e
 func (UnimplementedOmegaServiceServer) UpdateSubCfg(context.Context, *SubCfg) (*Response, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateSubCfg not implemented")
 }
-func (UnimplementedOmegaServiceServer) Consume(OmegaService_ConsumeServer) error {
+func (UnimplementedOmegaServiceServer) Consume(*ConsumeReq, OmegaService_ConsumeServer) error {
 	return status.Errorf(codes.Unimplemented, "method Consume not implemented")
 }
 func (UnimplementedOmegaServiceServer) mustEmbedUnimplementedOmegaServiceServer() {}
@@ -189,12 +190,15 @@ func _OmegaService_UpdateSubCfg_Handler(srv interface{}, ctx context.Context, de
 }
 
 func _OmegaService_Consume_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(OmegaServiceServer).Consume(&omegaServiceConsumeServer{stream})
+	m := new(ConsumeReq)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(OmegaServiceServer).Consume(m, &omegaServiceConsumeServer{stream})
 }
 
 type OmegaService_ConsumeServer interface {
 	Send(*ConsumeRsp) error
-	Recv() (*ConsumeReq, error)
 	grpc.ServerStream
 }
 
@@ -204,14 +208,6 @@ type omegaServiceConsumeServer struct {
 
 func (x *omegaServiceConsumeServer) Send(m *ConsumeRsp) error {
 	return x.ServerStream.SendMsg(m)
-}
-
-func (x *omegaServiceConsumeServer) Recv() (*ConsumeReq, error) {
-	m := new(ConsumeReq)
-	if err := x.ServerStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
 
 // OmegaService_ServiceDesc is the grpc.ServiceDesc for OmegaService service.
@@ -239,7 +235,6 @@ var OmegaService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Consume",
 			Handler:       _OmegaService_Consume_Handler,
 			ServerStreams: true,
-			ClientStreams: true,
 		},
 	},
 	Metadata: "omega.proto",

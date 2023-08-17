@@ -3,8 +3,10 @@ package alpha
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/ml444/gomega/alpha/omega"
 )
@@ -113,13 +115,23 @@ func TestSubscribe(t *testing.T) {
 	}
 }
 
+var f *os.File
+
 func handler(ctx context.Context, r *omega.ConsumeRsp) error {
+	f.Write(r.Data)
+	f.Write([]byte("\n"))
 	fmt.Println(string(r.Data), r.Sequence)
 	return nil
 }
 
 func TestLoopConsume(t *testing.T) {
 	InitClient("localhost:12345")
+	var err error
+	f, err = os.OpenFile("test1.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
 	type args struct {
 		ctx      context.Context
 		topic    string
@@ -138,9 +150,23 @@ func TestLoopConsume(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			start := time.Now()
 			if err := LoopConsume(tt.args.ctx, tt.args.topic, tt.args.group, tt.args.clientId, tt.args.handler); (err != nil) != tt.wantErr {
 				t.Errorf("LoopConsume() error = %v, wantErr %v", err, tt.wantErr)
 			}
+			t.Log("===>time:", time.Now().Sub(start).Seconds())
 		})
 	}
 }
+
+//func TestSub(t *testing.T) {
+//	subRsp, err := Sub(context.TODO(), &omega.SubReq{
+//		ClientId: "test_client_id",
+//		Topic:    "test_topic",
+//		Group:    "test_group",
+//	})
+//	if err != nil {
+//		t.Errorf("err: %v", err)
+//		return
+//	}
+//}

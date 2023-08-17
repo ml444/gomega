@@ -28,6 +28,35 @@ func getDataFile(fileDir string, sequence uint64) (*os.File, error) {
 	return getFile(path)
 }
 
+func maxIdxFileName(fileDir string) (uint64, error) {
+	var max uint64 = 1
+	err := filepath.Walk(fileDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		fname := info.Name()
+		if filepath.Ext(fname) == config.IdxFileSuffix {
+			seqStr := strings.TrimSuffix(fname, config.IdxFileSuffix)
+			seq, err := strconv.ParseUint(seqStr, 10, 64)
+			if err != nil {
+				return err
+			}
+			if seq > max {
+				max = seq
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return max, nil
+}
+
 func searchIdxFileWithSequence(fileDir string, sequence uint64) (string, uint64, error) {
 	var foundFile string
 	var foundSequence uint64
@@ -40,8 +69,8 @@ func searchIdxFileWithSequence(fileDir string, sequence uint64) (string, uint64,
 			return nil
 		}
 		fname := info.Name()
-		if filepath.Ext(fname) == ".idx" {
-			seqStr := strings.TrimSuffix(fname, ".idx")
+		if filepath.Ext(fname) == config.IdxFileSuffix {
+			seqStr := strings.TrimSuffix(fname, config.IdxFileSuffix)
 			seq, err := strconv.ParseUint(seqStr, 10, 64)
 			if err != nil {
 				return err
@@ -56,9 +85,6 @@ func searchIdxFileWithSequence(fileDir string, sequence uint64) (string, uint64,
 	})
 	if foundFile != "" {
 		return foundFile, foundSequence, nil
-	}
-	if err == nil {
-		return "", 0, fmt.Errorf("not found")
 	}
 	return "", 0, err
 }

@@ -27,13 +27,13 @@ type WorkerGroup struct {
 
 	done bool
 
-	minFinishSequence uint64
-	beginSequence     uint64
-	topic             string
-	fileDir           string
-	idxFile           *os.File
-	dataFile          *os.File
-	needRotate        bool
+	//minFinishSequence uint64
+	finishFileSequence uint64
+	topic              string
+	fileDir            string
+	idxFile            *os.File
+	dataFile           *os.File
+	needRotate         bool
 
 	itemList         []*Item
 	maxFillItemCount int
@@ -44,16 +44,16 @@ type WorkerGroup struct {
 
 func NewWorkerGroup(topic string, cfg *config.SubCfg) *WorkerGroup {
 	return &WorkerGroup{
-		cfg:              cfg,
-		topic:            topic,
-		workerMap:        map[string]*Worker{},
-		mu:               sync.RWMutex{},
-		fileDir:          filepath.Join(config.GlobalCfg.RootPath, topic),
-		beginSequence:    1,
-		sequenceCursor:   0,
-		maxFillItemCount: 1000,
-		openFileTk:       time.NewTicker(time.Second * 1),
-		sleepFillTk:      time.NewTicker(time.Millisecond * 100),
+		cfg:                cfg,
+		topic:              topic,
+		workerMap:          map[string]*Worker{},
+		mu:                 sync.RWMutex{},
+		fileDir:            filepath.Join(config.GetRootPath(), topic),
+		finishFileSequence: 1,
+		sequenceCursor:     cfg.LastSequence,
+		maxFillItemCount:   1000,
+		openFileTk:         time.NewTicker(time.Second * 1),
+		sleepFillTk:        time.NewTicker(time.Millisecond * 100),
 	}
 }
 
@@ -110,44 +110,44 @@ func (g *WorkerGroup) SetLatestFileSequence(sequence uint64) {
 }
 
 func (g *WorkerGroup) openIndexFile() (*os.File, error) {
-	path := filepath.Join(g.fileDir, fmt.Sprintf("%d%s", g.beginSequence, config.IdxFileSuffix))
+	path := filepath.Join(g.fileDir, fmt.Sprintf("%d%s", g.finishFileSequence, config.IdxFileSuffix))
 	return os.OpenFile(path, os.O_RDONLY, 0666)
 }
 func (g *WorkerGroup) openDataFile() (*os.File, error) {
-	path := filepath.Join(g.fileDir, fmt.Sprintf("%d%s", g.beginSequence, config.DataFileSuffix))
+	path := filepath.Join(g.fileDir, fmt.Sprintf("%d%s", g.finishFileSequence, config.DataFileSuffix))
 	return os.OpenFile(path, os.O_RDONLY, 0666)
 }
 func (g *WorkerGroup) openNextFile() error {
 	if g.idxFile != nil {
-		g.idxFile.Close()
+		_ = g.idxFile.Close()
 		g.idxFile = nil
 	}
 	if g.dataFile != nil {
-		g.dataFile.Close()
+		_ = g.dataFile.Close()
 		g.dataFile = nil
 	}
-RETRYIDX:
+AgainIdx:
 	idxFile, err := g.openIndexFile()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			select {
 			case <-g.openFileTk.C:
-				log.Debugf("retry open %d idx file", g.beginSequence)
-				goto RETRYIDX
+				log.Debugf("retry open %d idx file", g.finishFileSequence)
+				goto AgainIdx
 			}
 		}
 		log.Errorf("err: %v", err)
 		return err
 	}
 	g.idxFile = idxFile
-RETRYDATA:
+AgainData:
 	dataFile, err := g.openDataFile()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			select {
 			case <-g.openFileTk.C:
-				log.Debugf("retry open %d data file", g.beginSequence)
-				goto RETRYDATA
+				log.Debugf("retry open %d data file", g.finishFileSequence)
+				goto AgainData
 			}
 		}
 		log.Errorf("err: %v", err)
@@ -183,13 +183,13 @@ func (g *WorkerGroup) fillIndex() error {
 	var buf = make([]byte, size)
 	var off int64
 	var maybeRotate bool
-	if g.sequenceCursor > g.beginSequence {
-		off = int64(g.sequenceCursor-g.beginSequence) * indexItemSize
+	if g.sequenceCursor > g.finishFileSequence {
+		off = int64(g.sequenceCursor-g.finishFileSequence+1) * indexItemSize
 	}
 	n, err := g.idxFile.ReadAt(buf, off)
 	if err != nil {
 		if err == io.EOF {
-			log.Debugf("read %d idx file eof", g.beginSequence)
+			log.Debugf("read %d idx file eof", g.finishFileSequence)
 			maybeRotate = true
 		} else {
 			log.Error(err)
@@ -252,9 +252,9 @@ func (g *WorkerGroup) fillData(item *Item) error {
 }
 func (g *WorkerGroup) Start() error {
 	// read idx file and data file
-	searchSeq := g.beginSequence
-	if g.minFinishSequence > g.beginSequence {
-		searchSeq = g.minFinishSequence
+	searchSeq := g.finishFileSequence
+	if g.finishFileSequence == 1 && g.sequenceCursor > g.finishFileSequence {
+		searchSeq = g.sequenceCursor
 	}
 
 	_, fileFirstSeq, err := searchIdxFileWithSequence(g.fileDir, searchSeq)
@@ -262,7 +262,9 @@ func (g *WorkerGroup) Start() error {
 		log.Errorf("err: %v", err)
 		return err
 	}
-	g.beginSequence = fileFirstSeq
+	if fileFirstSeq != 0 {
+		g.finishFileSequence = fileFirstSeq
+	}
 	err = g.openNextFile()
 	if err != nil {
 		log.Errorf("err: %v", err)
@@ -271,8 +273,8 @@ func (g *WorkerGroup) Start() error {
 
 	for !g.done {
 		if g.needRotate {
-			log.Debugf("rotate file, beginSequence:%d", g.beginSequence)
-			g.beginSequence = g.sequenceCursor + 1
+			log.Debugf("rotate file, finishFileSequence:%d", g.finishFileSequence)
+			g.finishFileSequence = g.sequenceCursor + 1
 			err = g.openNextFile()
 			if err != nil {
 				log.Errorf("err: %v", err)
